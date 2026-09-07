@@ -17,7 +17,6 @@
 # Prints run.env (key=value) followed by brief.txt. Exit codes:
 #   0 ok (EMPTY=1 in run.env when there is nothing to review)   2 not a git repo
 #   3 base does not resolve    4 no merge base (unrelated histories)    5 cannot create $OUT
-#   6 model/pack-headings.txt missing — a checkout integrity problem, never expected
 set -u
 BASE_ARG="${1:-dev}"
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "error: not inside a git repository" >&2; exit 2; }
@@ -47,7 +46,7 @@ extract_wiring_block() {
   awk '/^## Wiring files/{f=1;next} /^## /{f=0} f&&/^```/{if(b){exit} b=1;next} f&&b' "$1"
 }
 
-PACK_PRESENT=0; STALE=0; PACK_CITES=""; PACK_WIRING_PATHS=""
+PACK_PRESENT=0; STALE=0; PACK_INVALID=0; PACK_CITES=""; PACK_WIRING_PATHS=""
 if [ -f "$PACK" ]; then
   PACK_PRESENT=1
   # A section is matched below by its exact `## Heading` string — every
@@ -62,16 +61,26 @@ if [ -f "$PACK" ]; then
   # a silent no-op — the redirect fails, bash prints its own stderr line,
   # but the loop body never runs, so MISSING_HEADINGS stays empty and this
   # check silently passes a pack that could be missing every heading.
-  [ -r model/pack-headings.txt ] || { echo "error: model/pack-headings.txt not found — cannot check required headings" >&2; exit 6; }
-  MISSING_HEADINGS=""
-  while IFS= read -r h; do
-    [ -n "$h" ] || continue
-    grep -qxF "$h" "$PACK" || MISSING_HEADINGS="$MISSING_HEADINGS
+  # Missing here degrades exactly like a stale/invalid pack (STALE=1,
+  # loud warning, generic fallback probes) rather than hard-exiting the
+  # whole script — this file's own doctrine everywhere else is "never
+  # block a review, degrade instead," and a checkout missing its own
+  # tooling asset is the same kind of can't-fully-verify-this-pack state
+  # PACK_STALE already exists to represent, not a new class of hard stop.
+  if [ ! -r model/pack-headings.txt ]; then
+    echo "warning: model/pack-headings.txt not found — cannot check required headings; treating pack as stale (generic fallback probes)." >&2
+    STALE=1; PACK_INVALID=1
+  else
+    MISSING_HEADINGS=""
+    while IFS= read -r h; do
+      [ -n "$h" ] || continue
+      grep -qxF "$h" "$PACK" || MISSING_HEADINGS="$MISSING_HEADINGS
 $h"
-  done < model/pack-headings.txt
-  MISSING_HEADINGS="$(printf '%s\n' "$MISSING_HEADINGS" | grep -v '^$')"
-  if [ -n "$MISSING_HEADINGS" ]; then
-    echo "warning: domain pack is missing (or has renamed) these section headings — each degrades silently to empty otherwise: $(printf '%s' "$MISSING_HEADINGS" | tr '\n' '|' | sed 's/|/, /g; s/, $//')" >&2
+    done < model/pack-headings.txt
+    MISSING_HEADINGS="$(printf '%s\n' "$MISSING_HEADINGS" | grep -v '^$')"
+    if [ -n "$MISSING_HEADINGS" ]; then
+      echo "warning: domain pack is missing (or has renamed) these section headings — each degrades silently to empty otherwise: $(printf '%s' "$MISSING_HEADINGS" | tr '\n' '|' | sed 's/|/, /g; s/, $//')" >&2
+    fi
   fi
   # Only repo-relative citations (containing a '/') are paths. A bare `card_repository.py:59`
   # is shorthand for a full path cited earlier in the same row, and `brief.txt` is an artifact
@@ -91,8 +100,9 @@ fi
 # stays inline, this covers everything it doesn't). An invalid pack is
 # treated exactly like a stale one below (STALE=1) rather than refused —
 # same doctrine as PACK_STALE: never block a review, degrade to generic
-# probes and say so loudly. ----------
-PACK_INVALID=0
+# probes and say so loudly. PACK_INVALID/STALE already initialized above,
+# not re-declared here — a missing pack-headings.txt already set both and
+# a re-init here would silently discard that. ----------
 VALIDATOR="model/validate-pack.sh"
 if [ "$PACK_PRESENT" = 1 ] && [ -f "$VALIDATOR" ]; then
   VALIDATE_OUT="$(bash "$VALIDATOR" "$PACK" 2>&1)"

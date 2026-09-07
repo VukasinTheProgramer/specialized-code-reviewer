@@ -37,6 +37,10 @@ done
 # silently print "built: 0 agent(s)" as if that were success. wc -l always
 # exits 0 even on empty input, unlike `grep -c .` which would exit 1 here
 # and abort under set -e before the explicit check below ever ran.
-COUNT="$(find "$OUT_DIR" -maxdepth 1 -name '*.md' | wc -l | tr -d ' ')"
+# -not -name '.*' because unlike a shell glob, find -name '*.md' matches a
+# leading-dot file too — a stray hidden .md left by unrelated tooling in
+# $OUT_DIR would otherwise inflate this count above 0 even when nothing
+# real was written this run, defeating the check right below it.
+COUNT="$(find "$OUT_DIR" -maxdepth 1 -name '*.md' -not -name '.*' | wc -l | tr -d ' ')"
 [ "$COUNT" -gt 0 ] || { echo "error: 0 agent files written to $OUT_DIR — nothing to build?" >&2; exit 1; }
 echo "built: $COUNT agent(s) in $OUT_DIR"
