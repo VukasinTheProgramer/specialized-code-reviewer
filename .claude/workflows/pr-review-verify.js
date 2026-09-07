@@ -327,7 +327,7 @@ for (const s of SLICES) {
   for (const result of passResults) {
     returned += result.findings.length
     for (const f of result.findings) {
-      if (!f || !f.file || f.line == null || !f.label || !f.failure_mode || !Array.isArray(f.evidence) || f.evidence.length === 0) {
+      if (!f || !f.file || f.line == null || !f.label || !f.failure_mode || !Array.isArray(f.evidence) || f.evidence.length < 2) {
         droppedMalformed++
         continue
       }

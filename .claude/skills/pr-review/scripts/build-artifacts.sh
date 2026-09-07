@@ -38,6 +38,15 @@ extract_citations() {  # every `path.ext[:line[-line2]]` citation containing a '
   grep -oE '`[A-Za-z0-9_./-]+\.[a-zA-Z]+(:[0-9]+(-[0-9]+)?)?`' "$1" 2>/dev/null | tr -d '`' | grep '/'
 }
 
+# The pack's ## Wiring files fenced block, verbatim — shared between
+# PACK_WIRING_PATHS (staleness checking, below) and $OUT/wiring.txt (handed
+# to every verifier, further down). Was two copy-pasted awk one-liners; a
+# fix to one without the other is exactly the duplicated-logic drift
+# eval/review-corrections.md already recorded as a real accepted defect.
+extract_wiring_block() {
+  awk '/^## Wiring files/{f=1;next} /^## /{f=0} f&&/^```/{if(b){exit} b=1;next} f&&b' "$1"
+}
+
 PACK_PRESENT=0; STALE=0; PACK_CITES=""; PACK_WIRING_PATHS=""
 if [ -f "$PACK" ]; then
   PACK_PRESENT=1
@@ -73,7 +82,7 @@ $h"
   # stray placeholder word outside the fence (e.g. "TBD") get treated as a
   # citation, failing path_exists and setting STALE=1 for a pack whose
   # actual wiring paths were fine.
-  PACK_WIRING_PATHS="$(awk '/^## Wiring files/{f=1;next} /^## /{f=0} f&&/^```/{if(b){exit} b=1;next} f&&b' "$PACK" | grep -E '^[A-Za-z0-9_./-]+$')"
+  PACK_WIRING_PATHS="$(extract_wiring_block "$PACK" | grep -E '^[A-Za-z0-9_./-]+$')"
 fi
 
 # ---------- 0.1c format validation — wiring-fenced, label field count,
@@ -410,7 +419,7 @@ if [ "$PACK_PRESENT" = 1 ] && [ "$STALE" = 0 ]; then
   # D1 fix: reset f at the *next heading*, not only at the next fence — an
   # unclosed fence used to make this scan straight past "## Wiring files"
   # into whatever section followed, up to that section's own fence.
-  awk '/^## Wiring files/{f=1;next} /^## /{f=0} f&&/^```/{if(b){exit} b=1;next} f&&b' "$PACK" > "$OUT/wiring.txt"
+  extract_wiring_block "$PACK" > "$OUT/wiring.txt"
 else : > "$OUT/wiring.txt"; fi
 
 # ---------- per-slice label probes, split once here instead of 4 spawns each reading
