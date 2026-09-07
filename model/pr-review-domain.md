@@ -54,6 +54,108 @@ live there permanently — only the citation-heavy records below move with the
 domain pack. Format: `model/FORMAT.md` §3. No precedent found for a label →
 leave it uncovered entirely, never fabricate a record.
 
+### contract.upstream-claim-reverified
+
+label:       contract
+statement:   A claim asserted by an upstream step, a spawn's structured
+             output or a shell loop that should have written files, is
+             independently re-verified downstream before being trusted,
+             never accepted on the upstream step's own say-so.
+exemplar:    `.claude/skills/pr-review/SKILL.md:130`
+witnesses:   `harness/build-agents.sh:44-45`
+             `tests/run-integration.sh:48-53`
+guard:       the re-derivation reads ground truth via a fresh command every
+             time (`git show $HEAD:<file>`, a real directory check), never
+             a cached flag the upstream step set on success
+unsafe_when: a new consumer reads the upstream claim directly, a report
+             step trusting a finding's line without a bounds check, or a
+             script using a claimed output path without checking it is
+             real, and skips the re-derivation
+
+### concurrency.atomic-publish
+
+label:       concurrency
+statement:   A file another process, or the next run, may observe is never
+             written in place at its final, predictable path. Either it is
+             written to a private location first and made visible by a
+             single atomic rename, or the location itself is created
+             atomically unique so no two runs can collide on it.
+exemplar:    `.claude/skills/pr-review/SKILL.md:139`
+witnesses:   `.claude/skills/pr-review/scripts/add-regression-case.sh:56`
+             `.claude/skills/pr-review/scripts/build-artifacts.sh:260`
+guard:       the atomic primitive itself, `mv` for a same-filesystem
+             rename or `mktemp`/`mktemp -d` for unique-path creation, is
+             what is load-bearing, never a test-then-write pattern
+unsafe_when: a new artifact is written straight to its final shared path
+             with no mktemp and no rename, so the next reader can observe
+             a partial write, or two concurrent runs can interleave
+             writes to the same path
+
+### layering.core-holds-doctrine
+
+label:       layering
+statement:   Anything that would survive a rewrite of this tool in a
+             different language or orchestration mechanism, the verifier
+             contract, the label taxonomy, the report format, lives in
+             core/; a harness/ file may run that doctrine but never state
+             new doctrine of its own.
+exemplar:    `core/doctrine.md:1`
+witnesses:   `harness/build-agents.sh:1`
+             `harness/compose-verifier.py:1`
+guard:       `harness/check-generated.sh` regenerates `.claude/agents/*.md`
+             from core/ into a scratch dir and diffs it byte-identical
+             against the committed copy, so core/ and harness/ cannot
+             drift apart silently
+unsafe_when: a harness/ file starts encoding what counts as a defect, a
+             label's rule hardcoded into a build script instead of
+             `core/doctrine.md` or a `core/agents/*.body.md`, which would
+             not survive a future rewrite, defeating the split's point
+
+### validation.git-root-guard
+
+label:       validation
+statement:   A script that resolves its own operating root via
+             `git rev-parse --show-toplevel` and then uses it as a cd
+             target guards the resolution failing, printing an error and
+             exiting a documented code, rather than continuing with an
+             empty or wrong root.
+exemplar:    `.claude/skills/pr-review/scripts/build-artifacts.sh:22`
+witnesses:   `.claude/skills/pr-review/scripts/add-regression-case.sh:21`
+             `.claude/skills/pr-review/scripts/run-regression-set.sh:20`
+guard:       the `|| { echo ...; exit 2; }` right after the assignment,
+             the command substitution's own exit status is checked, never
+             assumed
+unsafe_when: ROOT is used bare right after the assignment with nothing
+             checking that git rev-parse actually succeeded, an empty
+             ROOT can cd somewhere unintended, and "not inside a git
+             repo" is a real runtime case here since a foreign checkout
+             can be reviewed via a dropped-in pack
+deviations:  `harness/build-agents.sh:12`
+             `harness/check-generated.sh:8`
+
+### duplication.agents-generated-not-hand-duplicated
+
+label:       duplication
+statement:   Every file under `.claude/agents/` is generated from a core/
+             source by `harness/build-agents.sh`, a verbatim copy for
+             scout.md, a doctrine-composed build for the four
+             verify-*.body.md files, never hand-maintained as a second
+             copy of core/'s content.
+exemplar:    `.claude/agents/pr-verify-access.md:2`
+witnesses:   `.claude/agents/pr-verify-answer.md:2`
+             `.claude/agents/pr-verify-data.md:2`
+             `.claude/agents/pr-verify-structure.md:2`
+             `.claude/agents/pr-review-scout.md:2`
+guard:       `harness/check-generated.sh` regenerates into a scratch dir
+             and diffs it against `.claude/agents/`, non-zero exit on any
+             divergence; every generated file's banner line names its
+             core/ source and says not to hand-edit
+unsafe_when: a file under `.claude/agents/` is edited directly instead of
+             its core/ source, the edit survives until the next core/
+             change triggers a regeneration that silently overwrites it,
+             and nothing catches the drift unless check-generated.sh is
+             actually run
+
 ## Promoted non-defects
 
 ## Brief probes
