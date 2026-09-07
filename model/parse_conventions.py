@@ -126,15 +126,22 @@ def validate_records(records, section_lines):
     ('citation', (id, field, path, line)) for a citation to bounds-check —
     never raises, never repairs, same rule as every other check in
     model/validate-pack.sh."""
-    if not records and any(line.strip() for line in section_lines):
-        # Decision 2 (todays-work/week3/monday.md): hard-cut to records, no
-        # backward compatibility with the old `| label | probe |` table.
-        # Without this, a pack still in the old shape parses to zero
-        # records and passes as "nothing here" — silently going blank
-        # (build-artifacts.sh's renderer sees the same zero records) instead
-        # of erroring loudly, exactly the failure mode a hard-cut is
-        # supposed to prevent.
-        yield "invalid", "Label probes has content but no `### id` records found — still in the old table format? (model/FORMAT.md §3)"
+    # Decision 2 (todays-work/week3/monday.md): hard-cut to records, no
+    # backward compatibility with the old `| label | probe |` table. Without
+    # this, a pack still in the old shape parses to zero records and passes
+    # as "nothing here" — silently going blank (build-artifacts.sh's
+    # renderer sees the same zero records) instead of erroring loudly,
+    # exactly the failure mode a hard-cut is supposed to prevent.
+    #
+    # Specifically an old TABLE ROW (>= 2 `|` on one line), not "any content"
+    # — a caption paragraph above the first `### id` (same pattern every
+    # other section's own doc caption uses, e.g. "## Stack scope prefixes")
+    # is legitimate and already safely ignored by parse_records(), and must
+    # not itself read as "still in the old format" (a real false positive
+    # this produced once: model/pr-review-domain.md's own caption tripped it).
+    looks_like_old_table = any(line.count("|") >= 2 for line in section_lines)
+    if not records and looks_like_old_table:
+        yield "invalid", "Label probes has an old-style `| label | probe |` table row, not `### id` records (model/FORMAT.md §3)"
         return
     seen_ids = {}
     for r in records:
