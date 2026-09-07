@@ -223,30 +223,10 @@ function verifierPrompt(hyps, probesText) {
   const probes = probesText
     ? `\ndomain pack — this repo's own cited probes for your labels (use these before\nyour fallback prose; no need to open the pack file yourself, this is already\nevery row that applies to you):\n\n${probesText}\n`
     : '\nNo domain pack for your labels this run — use your own fallback prose.\n'
-  return `Review this diff for your slice, then settle the hypotheses below.
-
-Job 1 comes first and does not depend on the list: work the diff for your own
-labels and raise anything that clears the five-field bar. Do not read the
-hypotheses until job 1 is done — reading them first turns your review into a
-search for more things like them.
-
-Job 2: each hypothesis below is a guess from an agent that never opened the
-file, handed to you ranked by how strongly it was suspected. Work them in
-rank order and kill every one you cannot prove. If job 2 starts to crowd the
-quality of what job 1 would have found, stop and report how many you left
-unread — an unread hypothesis is cheaper than a thin sweep.
-
-Killing a hypothesis is always silent — there is no third outcome and no
-dismissal list. Either the code gives you a concrete triggering input or
-state and a wrong outcome, and it is a finding, or you drop it and say
-nothing.
-
-It is still a finding when a nearby guard appears intended to prevent it, and
-still a finding when nothing in the tree currently produces the triggering
-state — "no caller passes that yet", "nothing sets that column False today",
-"no route is wired to it yet" are reachability arguments, and reachability
-never decides whether a defect is there. If you can state the trigger and the
-wrong outcome, report it.
+  return `Review this diff for your slice (job 1), then settle the hypotheses
+below (job 2) — see your own agent definition for the two-job order, the
+five-field bar and the monotonic-findings rule; this prompt carries only this
+run's values, not the doctrine you already have.
 
 hypotheses:
 ${hypText}

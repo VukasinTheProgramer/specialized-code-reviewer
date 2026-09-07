@@ -369,9 +369,16 @@ if [ "$PACK_PRESENT" = 1 ]; then
     CODE_DIRS+=("$pre")
   done < <(awk '/^## Stack scope prefixes/{f=1;next} /^## /{f=0} f' "$PACK" | grep -E '^\|' | grep -vE '^\|[- |]+\|$' | grep -v 'Prefix')
 fi
+CODE_DIRS_IS_MANIFEST=0
 if [ "${#CODE_DIRS[@]}" -eq 0 ]; then
   # no pack: every top-level directory the manifest touches
   while IFS= read -r d; do CODE_DIRS+=("$d/"); done < <(grep '/' "$OUT/manifest.txt" | cut -d/ -f1 | sort -u)
+  # This list is exhaustive over the manifest — and code.diff below reuses
+  # patch.diff verbatim instead of re-diffing — only when every changed path
+  # actually sits in a subdirectory. A bare top-level file (no '/') has no
+  # entry in CODE_DIRS at all, so if one exists this shortcut must not fire:
+  # that file's diff would silently vanish from code.diff.
+  grep -qv '/' "$OUT/manifest.txt" || CODE_DIRS_IS_MANIFEST=1
 fi
 grep -qE "$BACKEND_PREFIX"  "$OUT/manifest.txt" && BE=1 || BE=0
 grep -qE "$FRONTEND_PREFIX" "$OUT/manifest.txt" && FE=1 || FE=0
@@ -382,7 +389,13 @@ else                                      SCOPE=neither; fi
 
 # ---------- 4 orientation brief — facts only, grep/awk only ----------
 BRIEF="$OUT/brief.txt"
-if [ "${#CODE_DIRS[@]}" -gt 0 ]; then
+if [ "$CODE_DIRS_IS_MANIFEST" = 1 ]; then
+  # CODE_DIRS is exactly the manifest's own top-level dirs with no bare
+  # top-level file outside them — a diff scoped to them is byte-identical to
+  # patch.diff already built above. Reuse it instead of a second full
+  # `git diff` traversal over the same range.
+  cp "$OUT/patch.diff" "$OUT/code.diff"
+elif [ "${#CODE_DIRS[@]}" -gt 0 ]; then
   git diff --unified=15 "$BASE...$HEAD_REF" -- "${CODE_DIRS[@]}" "${EXCLUDES[@]}" > "$OUT/code.diff"
 else : > "$OUT/code.diff"; fi
 added() { grep '^+' "$OUT/code.diff" | grep -v '^+++'; }
