@@ -186,9 +186,9 @@ statement:   A script meant to be invoked from another script or from
              the top, next to the shebang.
 exemplar:    `.claude/skills/pr-review/scripts/build-artifacts.sh:4`
 witnesses:   `model/validate-pack.sh:6`
-             `.claude/skills/pr-review/scripts/add-regression-case.sh:9`
-             `.claude/skills/pr-review/scripts/run-regression-set.sh:9`
-             `.claude/skills/pr-review/scripts/check-regression-case.sh:9`
+             `.claude/skills/pr-review/scripts/add-regression-case.sh:4`
+             `.claude/skills/pr-review/scripts/run-regression-set.sh:6`
+             `.claude/skills/pr-review/scripts/check-regression-case.sh:4`
 guard:       the header comment itself, read by a caller before it ever
              needs to catch a specific code or guess an argument order
 unsafe_when: a script gains a new required argument or a new meaningful
@@ -220,6 +220,45 @@ unsafe_when: a new check is added to one of these scripts as a bare
              whole point of "print every finding" is then defeated the
              first time an unrelated command's exit code would abort the
              script under an accidentally-added -e later
+
+### validation.missing-args-usage-exit-3
+
+label:       validation
+statement:   A script with required positional arguments checks every one
+             is present before doing anything else, printing a one-line
+             "usage: <script> <args>" to stderr and exiting 3 when any is
+             missing or empty, rather than proceeding and failing later on
+             an empty variable.
+exemplar:    `model/validate-pack.sh:11`
+witnesses:   `.claude/skills/pr-review/scripts/add-regression-case.sh:24-27`
+             `.claude/skills/pr-review/scripts/check-regression-case.sh:38-42`
+guard:       the presence check runs before any other work, no file reads,
+             no git calls, and always exits the same documented code (3),
+             so a caller can distinguish a bad invocation from every other
+             failure
+unsafe_when: a new required argument is added without adding it to this
+             check — the script then proceeds with an empty variable and
+             fails later, at whatever line first dereferences it, with a
+             message that does not say "you forgot an argument"
+
+### duplication.shared-matching-logic-sourced-not-copied
+
+label:       duplication
+statement:   Matching or parsing logic used by two independent scripts to
+             check the same thing lives in one sourced file, dot-sourced
+             by each caller, never hand-copied into each script with its
+             own message wording.
+exemplar:    `model/pack-heading-check.sh:1`
+witnesses:   `model/validate-pack.sh:29`
+             `.claude/skills/pr-review/scripts/build-artifacts.sh:42`
+guard:       neither caller reimplements the matching loop itself, only
+             its own reporting of the result — `missing_pack_headings()`'s
+             actual matching logic exists exactly once on disk
+unsafe_when: a second copy of the same check gets hand-written instead of
+             sourced — the two copies drift in what they check or how
+             they word an error, exactly the shape of the one accepted
+             defect this file itself replaced (`eval/review-corrections.md`,
+             week 1, before this file existed)
 
 ## Promoted non-defects
 
