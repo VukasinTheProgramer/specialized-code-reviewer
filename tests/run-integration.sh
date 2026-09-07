@@ -18,8 +18,18 @@ git config user.email test@test.com
 git config user.name test
 mkdir -p .claude/skills/pr-review/scripts model
 cp "$SCRIPTS/build-artifacts.sh" .claude/skills/pr-review/scripts/
-cp "$ROOT/model/validate-pack.sh" "$ROOT/model/pack-headings.txt" "$ROOT/model/pack-heading-check.sh" model/
+cp "$ROOT/model/validate-pack.sh" "$ROOT/model/pack-headings.txt" "$ROOT/model/pack-heading-check.sh" "$ROOT/model/parse_conventions.py" model/
+# README.md/LICENSE/.gitignore: the week-3 record-format test packs
+# (bad-wiring-stray-word.md, bad-wiring-unfenced.md, bad-brief-runtime-err.md)
+# cite these three as a record's exemplar/witnesses — validate-pack.sh checks
+# every citation resolves (model/FORMAT.md §3), against whatever repo build-
+# artifacts.sh's CWD is when it runs, which is this throwaway repo, not the
+# real one these packs live in. Without them here, every one of those packs
+# reads as PACK_INVALID for a reason that has nothing to do with what each
+# test actually exercises.
 echo "# readme" > README.md
+echo "MIT" > LICENSE
+echo "*.log" > .gitignore
 echo one > file.txt
 git add -A && git commit -q -m init
 echo two >> file.txt
@@ -91,6 +101,41 @@ if grep -qxF 'PACK_STALE=1' "$OUT/run.env" 2>/dev/null; then
   fail=1
 else
   echo "ok   wiring-stray-word: PACK_STALE=0 despite a stray word before the fence"
+fi
+
+# ---- week 3 Friday: round trip — three records, one per slice, each field
+# carrying a marker distinct to that record. Every marker must land in
+# exactly the slice its label maps to (auth->access, db->data, a11y->
+# structure) and nowhere else — proves a record's fields reach a verifier's
+# prompt unmangled, not just that *a* record renders somewhere. ----
+OUT="$(PR_REVIEW_PACK="$PACKS/roundtrip.md" PR_REVIEW_NO_GRAPH=1 \
+  bash .claude/skills/pr-review/scripts/build-artifacts.sh base 2>/dev/null | grep '^OUT=' | cut -d= -f2)"
+require_out "$OUT"
+roundtrip_fail=0
+# record -> (its own slice file, its own markers, the three OTHER slice files it must never reach)
+check_marker() {
+  file="$1"; marker="$2"; want="$3"  # want: present | absent
+  got="absent"
+  grep -qF "$marker" "$file" 2>/dev/null && got="present"
+  if [ "$got" != "$want" ]; then
+    echo "FAIL roundtrip: $marker $got in $file, want $want"
+    roundtrip_fail=1
+  fi
+}
+for rec in "A auth access" "B db data" "C a11y structure"; do
+  set -- $rec; label_letter="$1"; slice_file="probes-$3.txt"
+  for field in STATEMENT GUARD UNSAFE; do
+    marker="MARKER_${label_letter}_${field}"
+    for slice in access data answer structure; do
+      want="absent"; [ "probes-$slice.txt" = "$slice_file" ] && want="present"
+      check_marker "$OUT/probes-$slice.txt" "$marker" "$want"
+    done
+  done
+done
+if [ "$roundtrip_fail" = 0 ]; then
+  echo "ok   roundtrip: all 9 markers (3 records x statement/guard/unsafe_when) landed in exactly their own slice"
+else
+  fail=1
 fi
 
 exit "$fail"

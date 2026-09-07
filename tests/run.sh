@@ -22,9 +22,17 @@ check() {
 check "good.md"                  0
 check "bad-heading-case.md"      1
 check "bad-wiring-unfenced.md"   1
-check "bad-pipe-in-cell.md"      1
 check "bad-brief-syntax.md"      1
 check "bad-citation-unquoted.md" 1
 check "bad-unknown-label.md"     1
+
+# week 3: record-format checks (model/FORMAT.md §3) — bad-pipe-in-cell.md
+# retired above it: a `|` inside a probe cell can't split a row that no
+# longer has cells.
+check "bad-one-witness.md"       1
+check "bad-unknown-field.md"     1
+check "bad-duplicate-id.md"      1
+check "bad-empty-unsafe-when.md" 1
+check "bad-citation-eof.md"      1
 
 exit "$fail"

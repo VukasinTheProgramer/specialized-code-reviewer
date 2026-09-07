@@ -1,4 +1,4 @@
-# PR review domain pack (test fixture — brief probes runtime error, not caught by bash -n)
+# PR review domain pack (test fixture — one witness, below the minimum) — week 3
 
 ## Stack scope prefixes
 
@@ -9,18 +9,18 @@
 ## Wiring files
 
 ```
+.claude/skills/pr-review/scripts/build-artifacts.sh
 README.md
 ```
 
 ## Label probes
 
-### dead-code.stale-reference
+### dead-code.one-witness
 
 label:        dead-code
 statement:    A README section stays consistent with what it documents.
 exemplar:     `README.md:1`
 witnesses:    `LICENSE:1`
-              `.gitignore:1`
 guard:        the citation resolves and stays within the file
 unsafe_when:  the file is deleted or shrinks past the cited line
 
@@ -29,7 +29,7 @@ unsafe_when:  the file is deleted or shrinks past the cited line
 ## Brief probes
 
 ```bash
-echo "ROUTERS=$(nonexistent_command_xyz)"
+echo "ok"
 ```
 
 ## Dependencies

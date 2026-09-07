@@ -19,6 +19,11 @@ PACK="${1:-}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HEADINGS_FILE="$SCRIPT_DIR/pack-headings.txt"
 
+# Citations in a record (`exemplar`/`witnesses`/`deviations`) are repo-relative,
+# same convention as everywhere else in the pack — resolved against the repo
+# root, not whatever directory this script happened to be invoked from.
+PACK_REPO_ROOT="$(cd "$SCRIPT_DIR" && git rev-parse --show-toplevel 2>/dev/null)"
+
 # missing_pack_headings() — shared with build-artifacts.sh, not duplicated
 # (see model/pack-heading-check.sh for why).
 . "$SCRIPT_DIR/pack-heading-check.sh"
@@ -51,28 +56,46 @@ elif [ $((WIRING_FENCES % 2)) -ne 0 ]; then
   fail "Wiring files: fenced block not closed before the next heading (model/FORMAT.md §2)"
 fi
 
-# ---- check: Label probes rows — field count and closed-label membership,
-# both read off the section using the same heading-bounded extraction (not
-# build-artifacts.sh's contiguous-until-fence scan) ----
-LABEL_RC=0
-awk -F'|' -v labels="auth ownership security data-exposure db concurrency logic validation control-flow state contract layering duplication dead-code a11y" '
-  BEGIN { n = split(labels, arr, " "); for (i = 1; i <= n; i++) valid[arr[i]] = 1 }
-  /^## Label probes/ { f = 1; next }
-  /^## / { f = 0 }
-  f && /^\|/ {
-    label = $2; gsub(/^[ \t]+|[ \t]+$/, "", label); gsub(/`/, "", label)
-    if (label == "" || label ~ /^-+$/ || tolower(label) == "label") next
-    if (NF != 4) {
-      print "invalid: Label probes row does not split into exactly one label + one probe cell (unescaped `|` in a cell?) (model/FORMAT.md §3): " $0
-      bad = 1
-    } else if (!(label in valid)) {
-      print "invalid: Label probes label `" label "` is not one of the 15 closed labels (model/FORMAT.md §4): " $0
-      bad = 1
-    }
-  }
-  END { exit bad }
-' "$PACK" || LABEL_RC=1
-[ "$LABEL_RC" = 1 ] && INVALID=1
+# ---- check: Label probes records — week 3 format (model/FORMAT.md §3): every
+# required field present, no unknown field name, id unique + matches the slug
+# grammar, witnesses >= 2, closed label list (§4), every citation resolves.
+# Structural parsing (multi-line field continuation) lives in
+# model/parse_conventions.py, same reasoning as build-artifacts.sh's renderer
+# using it instead of another awk one-liner — this script consumes its output
+# rather than re-parsing records itself. Citation existence/line-bounds stays
+# here in bash, on disk, not reimplemented a second time in python. ----
+PARSE_CONVENTIONS="$SCRIPT_DIR/parse_conventions.py"
+if ! command -v python3 >/dev/null 2>&1; then
+  fail "python3 not found — cannot validate Label probes records (model/FORMAT.md §3)"
+elif [ ! -f "$PARSE_CONVENTIONS" ]; then
+  fail "$PARSE_CONVENTIONS not found — cannot validate Label probes records (model/FORMAT.md §3)"
+else
+  while IFS= read -r vline; do
+    [ -n "$vline" ] || continue
+    case "$vline" in
+      invalid:*)
+        fail "${vline#invalid: }"
+        ;;
+      citation*)
+        rid="$(printf '%s' "$vline" | cut -f2)"
+        field="$(printf '%s' "$vline" | cut -f3)"
+        cpath_rel="$(printf '%s' "$vline" | cut -f4)"
+        cline="$(printf '%s' "$vline" | cut -f5)"
+        cpath="${PACK_REPO_ROOT:-.}/$cpath_rel"
+        if [ ! -e "$cpath" ]; then
+          fail "record \`$rid\` ($field): citation does not resolve — no such file: $cpath_rel (model/FORMAT.md §3)"
+        elif [ -n "$cline" ]; then
+          # awk 'END{print NR}', not wc -l — wc -l undercounts a file with no
+          # trailing newline, the same off-by-one SKILL.md §5.3b guards against.
+          CCOUNT=$(awk 'END{print NR}' "$cpath" 2>/dev/null); CCOUNT="${CCOUNT:-0}"
+          if [ "$cline" -gt "$CCOUNT" ] 2>/dev/null; then
+            fail "record \`$rid\` ($field): citation line $cline is past EOF — $cpath_rel has $CCOUNT lines (model/FORMAT.md §3)"
+          fi
+        fi
+        ;;
+    esac
+  done < <(python3 "$PARSE_CONVENTIONS" "$PACK" validate)
+fi
 
 # ---- check: Brief probes has a ```bash fence, and the extracted block
 # passes `bash -n` — D3, where a syntax error there is currently swallowed

@@ -15,9 +15,17 @@ README.md
 
 ## Label probes
 
-| `label` | Probes |
-|---|---|
-| `dead-code` | See .claude/skills/pr-review/scripts/build-artifacts.sh:20 for details |
+### dead-code.stale-reference
+
+label:        dead-code
+statement:    A README section stays consistent with what it documents.
+exemplar:     `README.md:1`
+witnesses:    `LICENSE:1`
+              `.gitignore:1`
+guard:        see .claude/skills/pr-review/scripts/build-artifacts.sh:20 for details
+unsafe_when:  the file is deleted or shrinks past the cited line
+
+## Promoted non-defects
 
 ## Brief probes
 

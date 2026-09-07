@@ -441,33 +441,16 @@ else : > "$OUT/wiring.txt"; fi
 
 # ---------- per-slice label probes, split once here instead of 4 spawns each reading
 # the whole pack (empty files when absent/stale — verifiers already carry their own
-# fallback prose for that case, same signal as an empty wiring.txt) ----------
+# fallback prose for that case, same signal as an empty wiring.txt). Week 3: the
+# section holds N convention records (### id, key: value fields), not table rows —
+# multi-line field values (a wrapped statement, a multi-entry witnesses list) are
+# why this is python3, not another awk one-liner (model/parse_conventions.py's own
+# header: ~30 lines of hand-rolled parsing is the line, and continuation lines cross
+# it). A record with an unmatched label warns on stderr and is dropped, never blocks
+# — same doctrine as every other pack degrade. ----------
 for f in access data answer structure; do : > "$OUT/probes-$f.txt"; done
-UNMATCHED_LABELS=""
 if [ "$PACK_PRESENT" = 1 ] && [ "$STALE" = 0 ]; then
-  UNMATCHED_LABELS="$(awk -F'|' '
-    /^## Label probes/{f=1;next} /^## /{f=0} f&&/^\|/{print}
-  ' "$PACK" | awk -F'|' -v out="$OUT" '
-    BEGIN {
-      slice["auth"]="access"; slice["ownership"]="access"; slice["security"]="access"; slice["data-exposure"]="access";
-      slice["db"]="data"; slice["concurrency"]="data";
-      slice["logic"]="answer"; slice["validation"]="answer"; slice["control-flow"]="answer"; slice["state"]="answer"; slice["contract"]="answer";
-      slice["layering"]="structure"; slice["duplication"]="structure"; slice["dead-code"]="structure"; slice["a11y"]="structure";
-    }
-    {
-      label = $2; gsub(/^[ \t]+|[ \t]+$/, "", label); gsub(/`/, "", label)
-      if (label == "label" || label ~ /^-+$/) next  # the table header/separator rows, not a real row
-      if (!(label in slice)) { print label; next }
-      probes = $3; gsub(/^[ \t]+|[ \t]+$/, "", probes)
-      print "`" label "` — " probes >> (out "/probes-" slice[label] ".txt")
-    }
-  ')"
-  # A row whose first column doesn't match one of the 15 closed-list labels
-  # (a typo, a renamed label) is dropped by the awk above with no signal —
-  # that label's citations silently vanish from every verifier's prompt and
-  # it falls back to generic fallback prose, same failure shape PACK_STALE
-  # exists to catch, just via a different cause (bad label, not bad path).
-  [ -n "$UNMATCHED_LABELS" ] && echo "warning: domain pack has a row whose label doesn't match any of the 15 known labels — dropped, not split into any probes-*.txt: $(printf '%s' "$UNMATCHED_LABELS" | tr '\n' ' ')" >&2
+  python3 model/parse_conventions.py "$PACK" render "$OUT"
 fi
 
 # ---------- scout gets every label's probes in one file — it has no slice
@@ -499,23 +482,35 @@ if [ "$PACK_PRESENT" = 1 ] && [ "$STALE" = 0 ]; then
   fi
 fi
 
-# ---------- known non-defects, scout-only — the ledger's "Known non-defects"
-# and "Label corrections" sections (extracted in 0.1b above, along with the
-# staleness check on the citations in them), never "Run tally" onward. That
-# tail grows every verdicted run; scout needs the evergreen rules, not the run
-# history, so this stays flat-cost regardless of how much tally accumulates
-# later. Empty when no ledger, or the heading exists with nothing under it.
-# Not gated on LEDGER_STALE (0.1b already warned) — a drifted citation in one
-# rule's evidence doesn't invalidate the other six, and dropping all of them
-# over one bad line number would re-introduce exactly the false positives
-# this file exists to suppress. ----------
-if [ "$LEDGER_PRESENT" = 1 ] && [ -n "$KNOWN_NON_DEFECTS_TEXT" ]; then
+# ---------- known non-defects, scout-only — two producers into one consumer.
+# The ledger's "Known non-defects" and "Label corrections" sections (extracted
+# in 0.1b above, along with the staleness check on the citations in them),
+# never "Run tally" onward — that tail grows every verdicted run, scout needs
+# the evergreen rules, not the run history. And now the pack's own
+# "## Promoted non-defects" (week 3, Thursday) — rules a human watched come
+# back twice on *this* repo, promoted out of the ledger the same file section
+# above is extracted from, formerly hardcoded straight into
+# core/agents/scout.md (a rule that only matched one particular codebase,
+# with nowhere else to live). Ledger first, then pack — order doesn't matter
+# to the scout (neither is positional), but keeps this file's own history
+# ahead of what's freshest. Empty when neither is present, or both sections
+# exist with nothing under them. Not gated on staleness for either producer —
+# same reasoning as the ledger's own half: one drifted citation shouldn't
+# suppress every other rule. ----------
+PACK_NON_DEFECTS_TEXT=""
+if [ "$PACK_PRESENT" = 1 ] && [ "$STALE" = 0 ]; then
+  PACK_NON_DEFECTS_TEXT="$(awk '/^## Promoted non-defects/{f=1;next} /^## /{f=0} f' "$PACK" | grep -v '^$')"
+fi
+if { [ "$LEDGER_PRESENT" = 1 ] && [ -n "$KNOWN_NON_DEFECTS_TEXT" ]; } || [ -n "$PACK_NON_DEFECTS_TEXT" ]; then
   # -n guards a section that matched but was empty (e.g. a ledger with a
   # "## Known non-defects" heading and nothing under it before "## Run tally")
   # — printf '%s\n' on an empty string still writes one newline, a 1-byte file
   # that reads as truthy in JS (pr-review-verify.js's `probesAllText ? ... : ...`
   # pattern) though there is nothing in it to show the scout.
-  printf '%s\n' "$KNOWN_NON_DEFECTS_TEXT" > "$OUT/known-non-defects.txt"
+  {
+    [ -n "$KNOWN_NON_DEFECTS_TEXT" ] && printf '%s\n' "$KNOWN_NON_DEFECTS_TEXT"
+    [ -n "$PACK_NON_DEFECTS_TEXT" ] && printf '%s\n' "$PACK_NON_DEFECTS_TEXT"
+  } > "$OUT/known-non-defects.txt"
 else
   : > "$OUT/known-non-defects.txt"
 fi

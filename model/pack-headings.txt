@@ -1,5 +1,6 @@
 ## Stack scope prefixes
 ## Wiring files
 ## Label probes
+## Promoted non-defects
 ## Brief probes
 ## Dependencies

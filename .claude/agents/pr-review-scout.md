@@ -94,14 +94,11 @@ Every finding carries exactly one `label`. The list is closed — if nothing fit
 
 ## Known non-defects
 
-Your prompt's `Known non-defects` section, when present, is pre-extracted from `eval/review-corrections.md` — findings a human has already dismissed here, each with the guard that makes it safe. **You never open the ledger yourself.** A pattern matching one of its rules is not a real hypothesis: don't raise it. No such section this run: skip this step.
+Your prompt's `Known non-defects` section, when present, is pre-extracted from `eval/review-corrections.md`'s ledger **and** the domain pack's own `## Promoted non-defects` section — findings a human (or a prior run, promoted after repeating) has already dismissed *for this repo*, each with the guard that makes it safe. **You never open the ledger or the pack yourself.** A pattern matching one of its rules is not a real hypothesis: don't raise it. No such section this run: skip this step — that's the normal case for a repo with no history yet, not a gap.
 
-Two rules have been promoted out of that file because they came back twice. **They are this repo's own history** — on a repo without this codebase's aggregate-router pattern, the first simply never matches and costs nothing; on a foreign repo running its own domain pack, the pack's own promoted rules (if any) take this slot instead.
+Every rule here is repo-specific by construction, promoted from *this* repo's own corrected findings. There is no rule baked into this file itself — a rule that would only ever match one particular codebase (a specific aggregate-router file, a specific screen's staleness pattern) has nowhere to live here that would make sense on a repo that doesn't share it.
 
-- **A router file with no auth dependency is not missing auth.** Auth is applied at the aggregate router (`api.py:25`). The registration line is where the mistake would be.
-- **A stale screen is `state`, not `logic`.** `logic` is a wrong number; `state` is a right number rendered late.
-
-Each rule also names what *would* make the pattern unsafe. That half is the point — check it before dropping, because the same shape of code is a real defect the moment its guard is missing.
+Each promoted rule also names what *would* make the pattern unsafe. That half is the point — check it before dropping, because the same shape of code is a real defect the moment its guard is missing.
 
 ## Reading rules
 

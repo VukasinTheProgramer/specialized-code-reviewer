@@ -15,9 +15,17 @@ README.md
 
 ## Label probes
 
-| `label` | Probes |
-|---|---|
-| `performance` | Check `README.md` for stale references |
+### performance.stale-reference
+
+label:        performance
+statement:    A README section stays consistent with what it documents.
+exemplar:     `README.md:1`
+witnesses:    `LICENSE:1`
+              `.gitignore:1`
+guard:        the citation resolves and stays within the file
+unsafe_when:  the file is deleted or shrinks past the cited line
+
+## Promoted non-defects
 
 ## Brief probes
 

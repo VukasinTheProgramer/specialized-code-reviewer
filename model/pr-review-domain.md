@@ -4,7 +4,7 @@ Repo-specific knowledge for `/pr-review`. The skill and every agent it spawns
 check for this file before falling back to their built-in, stack-agnostic
 default. Delete or rename this file to run the reviewer generic on this repo
 (useful for testing the fallback path); this copy ships empty — run the
-`generate-domain-pack` skill to fill in the five sections below for whatever
+`generate-domain-pack` skill to fill in the six sections below for whatever
 repo it's dropped into, or edit them by hand.
 
 Every section below is intentionally empty, with no explanatory prose under
@@ -18,11 +18,14 @@ missing/renamed `## Heading` or a citation that no longer resolves).
 
 **Stack scope prefixes** computes `SCOPE`/`BE`/`FE` and gates which labels can
 fire. **Wiring files** are pinned as readable-without-asking in every
-verifier's prompt. **Label probes** hold this repo's own cited defect
-patterns, one row per label. **Brief probes** are the regexes behind
-`brief.txt`. **Dependencies** is a fast first-pass check before flagging an
-import as newly-added — a curated shortlist, never a substitute for reading
-the actual manifest.
+verifier's prompt. **Label probes** hold this repo's own convention records —
+any number tagged with a label, not one row per label (`model/FORMAT.md`
+§3). **Promoted non-defects** holds this repo's own dismissal rules that
+have come back twice (`model/FORMAT.md` §4b) — never a rule copied in from
+another codebase. **Brief probes** are the regexes behind `brief.txt`.
+**Dependencies** is a fast first-pass check before flagging an import as
+newly-added — a curated shortlist, never a substitute for reading the actual
+manifest.
 
 ## Stack scope prefixes
 
@@ -43,16 +46,15 @@ Paths pinned as readable-without-asking in every verifier's prompt, alongside it
 
 ## Label probes
 
-Concrete, cited patterns for each label — the "Probes" half of the table in
+Concrete, cited convention records — the "Probes" half of the table in
 `pr-review-scout.md` and the "How to verify in this codebase" section of each
 `pr-verify-*` agent. Read the label table in `pr-review-scout.md` for the label
 names, the slice routing, and the `Use for` column, which stay generic and
-live there permanently — only the citation-heavy probes below move with the
-domain pack. No precedent found for a label → leave its row out entirely,
-never fabricate one.
+live there permanently — only the citation-heavy records below move with the
+domain pack. Format: `model/FORMAT.md` §3. No precedent found for a label →
+leave it uncovered entirely, never fabricate a record.
 
-| `label` | Probes |
-|---|---|
+## Promoted non-defects
 
 ## Brief probes
 
