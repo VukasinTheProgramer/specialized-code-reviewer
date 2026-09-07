@@ -448,9 +448,19 @@ else : > "$OUT/wiring.txt"; fi
 # header: ~30 lines of hand-rolled parsing is the line, and continuation lines cross
 # it). A record with an unmatched label warns on stderr and is dropped, never blocks
 # — same doctrine as every other pack degrade. ----------
+# python3 backs both parse_conventions.py calls below (this render, and the
+# Promoted non-defects extraction further down) — probed once here, not per
+# call site.
+HAVE_PY3=0
+command -v python3 >/dev/null 2>&1 && HAVE_PY3=1
+
 for f in access data answer structure; do : > "$OUT/probes-$f.txt"; done
 if [ "$PACK_PRESENT" = 1 ] && [ "$STALE" = 0 ]; then
-  python3 model/parse_conventions.py "$PACK" render "$OUT"
+  if [ "$HAVE_PY3" = 1 ]; then
+    python3 model/parse_conventions.py "$PACK" render "$OUT" "$BE" "$FE"
+  else
+    echo "warning: python3 not found — Label probes records not rendered, probes-*.txt left empty" >&2
+  fi
 fi
 
 # ---------- scout gets every label's probes in one file — it has no slice
@@ -498,8 +508,8 @@ fi
 # same reasoning as the ledger's own half: one drifted citation shouldn't
 # suppress every other rule. ----------
 PACK_NON_DEFECTS_TEXT=""
-if [ "$PACK_PRESENT" = 1 ] && [ "$STALE" = 0 ]; then
-  PACK_NON_DEFECTS_TEXT="$(awk '/^## Promoted non-defects/{f=1;next} /^## /{f=0} f' "$PACK" | grep -v '^$')"
+if [ "$PACK_PRESENT" = 1 ] && [ "$HAVE_PY3" = 1 ]; then
+  PACK_NON_DEFECTS_TEXT="$(python3 model/parse_conventions.py "$PACK" extract-section "## Promoted non-defects" | grep -v '^$')"
 fi
 if { [ "$LEDGER_PRESENT" = 1 ] && [ -n "$KNOWN_NON_DEFECTS_TEXT" ]; } || [ -n "$PACK_NON_DEFECTS_TEXT" ]; then
   # -n guards a section that matched but was empty (e.g. a ledger with a
