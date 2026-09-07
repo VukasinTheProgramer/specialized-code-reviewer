@@ -1,0 +1,46 @@
+{
+  "base": "87a033d",
+  "head": "18276dc4c24f843674dc0f7db4aca9f970551e84",
+  "scope": "neither",
+  "graph": "off",
+  "scout_failed": false,
+  "slices_run": ["Access", "Data", "Answer", "Structure"],
+  "verified_clean": ["Access", "Data"],
+  "failed": [],
+  "degraded": [],
+  "slice_mismatch": [],
+  "hypotheses": {"raised": 1, "routed": 1, "proven": 1, "also_swept": 0, "unread": 0, "dropped": 0},
+  "dropped_malformed": 0,
+  "dropped_unreachable": 0,
+  "findings": [
+    {
+      "n": 1,
+      "file": ".claude/skills/pr-review/scripts/validate-pack.sh",
+      "line": 28,
+      "label": "validation",
+      "source": "hypothesis",
+      "failure_mode": "A pack file with all five correctly-spelled section headings but a structural violation the validator hasn't implemented yet (unclosed wiring fence, unescaped pipe in a table cell, malformed bash in Brief probes, an unquoted citation, or a label not in the closed list) passes validate-pack.sh with exit 0 instead of being rejected. The co-shipped spec tests/run.sh expects exit 1 for exactly these five malformed fixtures, so running tests/run.sh fails on all five.",
+      "evidence": [
+        ".claude/skills/pr-review/scripts/validate-pack.sh:24-26 — only check performed is exact-match grep over the five heading strings",
+        ".claude/skills/pr-review/scripts/validate-pack.sh:28-30 — TODO comment defers wiring-fence, pipe-in-cell, label-membership, brief-syntax, and citation-quoting checks",
+        "tests/packs/bad-wiring-unfenced.md:9-12 — all five headings present verbatim; only defect is the unterminated fence after '## Wiring files'",
+        "tests/run.sh:323 — check \"bad-wiring-unfenced.md\" 1 expects the validator to reject this fixture",
+        "bash validate-pack.sh tests/packs/bad-wiring-unfenced.md exits 0, so tests/run.sh reports FAIL (exit 0, want 1) — invalid pack silently accepted"
+      ]
+    },
+    {
+      "n": 2,
+      "file": ".claude/skills/pr-review/scripts/validate-pack.sh",
+      "line": 18,
+      "label": "duplication",
+      "source": "sweep",
+      "failure_mode": "The five required pack-section headings and the exact-match grep check against them are re-declared independently here instead of reusing the identical list already in build-artifacts.sh; a future edit to the pack format contract applied to only one of the two copies makes build-artifacts.sh (warn-and-continue) and validate-pack.sh (hard-fail) disagree on whether the same pack is valid.",
+      "evidence": [
+        ".claude/skills/pr-review/scripts/build-artifacts.sh:52 — for h in \"## Stack scope prefixes\" ... ; do (original five-heading list)",
+        "build-artifacts.sh:58 — echo \"warning: domain pack is missing ...\" (non-blocking failure path)",
+        "validate-pack.sh:18 — for h in \"## Stack scope prefixes\" ... ; do (independent re-declaration of the same list)",
+        "validate-pack.sh:19 — grep -qxF \"$h\" \"$PACK\" || fail ... (blocking failure path, own copy of the rule)"
+      ]
+    }
+  ]
+}
