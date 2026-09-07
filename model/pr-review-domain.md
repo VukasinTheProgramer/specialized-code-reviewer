@@ -148,8 +148,9 @@ witnesses:   `.claude/agents/pr-verify-answer.md:2`
              `.claude/agents/pr-review-scout.md:2`
 guard:       `harness/check-generated.sh` regenerates into a scratch dir
              and diffs it against `.claude/agents/`, non-zero exit on any
-             divergence; every generated file's banner line names its
-             core/ source and says not to hand-edit
+             divergence; every generated file's banner line points back to
+             core/ (the same generic line in all five, not each file's own
+             specific source) and says not to hand-edit
 unsafe_when: a file under `.claude/agents/` is edited directly instead of
              its core/ source, the edit survives until the next core/
              change triggers a regeneration that silently overwrites it,
