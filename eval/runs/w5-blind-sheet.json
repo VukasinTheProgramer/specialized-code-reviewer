@@ -1,0 +1,254 @@
+[
+  {
+    "id": "t-01",
+    "file": ".claude/skills/pr-review/scripts/validate-pack.sh",
+    "line": 43,
+    "label": "logic",
+    "failure_mode": "A Label probes table using GFM colon-alignment separator syntax (`|:---|:---|`) is not recognized as a separator row (only all-dash `---` matches), so the script treats `:---` as a real label and flags it as unknown, rejecting a fully valid pack.",
+    "evidence": [
+      ".claude/skills/pr-review/scripts/validate-pack.sh:43 — `label ~ /^-+$/` doesn't match `:---`",
+      ".claude/skills/pr-review/scripts/validate-pack.sh:47 — falls through to `!(label in valid)`",
+      ".claude/skills/pr-review/scripts/validate-pack.sh:48 — prints invalid unknown-label and sets bad=1"
+    ]
+  },
+  {
+    "id": "t-02",
+    "file": ".claude/skills/pr-review/scripts/validate-pack.sh",
+    "line": 42,
+    "label": "duplication",
+    "failure_mode": "The heading-bounded row extraction for \"## Label probes\" and the label-cell trim (strip whitespace, strip backticks) are copy-pasted from build-artifacts.sh's own Label-probes parser into the new validator instead of being factored into one place both scripts call. The two parsers can drift.",
+    "evidence": [
+      "build-artifacts.sh:371 — production heading-bounded row extraction",
+      "build-artifacts.sh:380 — production label-cell trim",
+      "validate-pack.sh:39-42 — retypes the identical heading-bound and trim gsub sequence as its own copy, with no shared function between the two files"
+    ]
+  },
+  {
+    "id": "t-03",
+    "file": ".claude/skills/pr-review/scripts/validate-pack.sh",
+    "line": 18,
+    "label": "duplication",
+    "failure_mode": "The exact-match five-heading presence loop already exists hand-written in build-artifacts.sh (lines 52-55, present before this diff). This diff adds a second, independently hand-typed copy of the same loop in validate-pack.sh instead of extracting it into one sourced function. The two copies already word their outcome differently and will keep drifting silently if the required-heading list ever changes in one script but not the other.",
+    "evidence": [
+      ".claude/skills/pr-review/scripts/build-artifacts.sh:52 — for h in the five heading strings (first hand-written copy of the check)",
+      ".claude/skills/pr-review/scripts/build-artifacts.sh:53 — grep -qxF \"$h\" \"$PACK\" || MISSING_HEADINGS=... (first copy's matching logic and wording)",
+      ".claude/skills/pr-review/scripts/validate-pack.sh:18 — the identical five-string list re-typed verbatim in the new file",
+      ".claude/skills/pr-review/scripts/validate-pack.sh:19 — grep -qxF \"$h\" \"$PACK\" || fail \"missing or renamed heading: $h\" — second hand-copied check with its own wording, no shared sourced function between the two callers"
+    ]
+  },
+  {
+    "id": "t-04",
+    "file": ".claude/skills/pr-review/scripts/validate-pack.sh",
+    "line": 63,
+    "label": "duplication",
+    "failure_mode": "The new Brief-probes validation hand-copies the exact same awk extraction script that build-artifacts.sh already uses (build-artifacts.sh:351) to pull the same bash block out of the same section, instead of sourcing one shared implementation. If the section's heading text, fence convention, or block-closing rule ever needs to change, a fix applied to one copy can miss the other, so a pack that build-artifacts.sh parses one way can be validated a different way by validate-pack.sh — the exact drift shape this codebase later fixed by factoring the equivalent heading-check logic into a single sourced file (model/pack-heading-check.sh).",
+    "evidence": [
+      ".claude/skills/pr-review/scripts/build-artifacts.sh:351 — already extracts the Brief probes bash block for eval",
+      ".claude/skills/pr-review/scripts/validate-pack.sh:63 — hand-copies the identical awk script into a second, independent file",
+      ".claude/skills/pr-review/scripts/validate-pack.sh:64-67 — the copy is used only to run bash -n on the block, with no shared source between the two extractions",
+      "model/pack-heading-check.sh:1-10 (later state of this same repo) — records this exact pattern, two independently hand-typed copies drifting apart, as the accepted duplication defect this file was created to stop recurring"
+    ]
+  },
+  {
+    "id": "t-05",
+    "file": ".claude/skills/pr-review/scripts/build-artifacts.sh",
+    "line": 79,
+    "label": "duplication",
+    "failure_mode": "A domain pack missing/renaming one of the 5 required headings trips two independently hand-typed copies of the same heading-check loop with different severities: build-artifacts.sh's own inline check only warns and never gates, while the new call into validate-pack.sh's separate copy of the same check fails and is now wired into STALE=1 by this diff, which empties every probes-*.txt and the Dependencies block for the whole pack instead of just the one affected section, contradicting this same file's/SKILL.md's own documented single-section degrade.",
+    "evidence": [
+      ".claude/skills/pr-review/scripts/build-artifacts.sh:52 — for h in the five heading strings / grep -qxF \"$h\" \"$PACK\" || MISSING_HEADINGS=... (warns only, never sets STALE)",
+      ".claude/skills/pr-review/scripts/validate-pack.sh:18 — grep -qxF \"$h\" \"$PACK\" || fail \"missing or renamed heading: $h\" (independent hand-typed second copy of the same check)",
+      ".claude/skills/pr-review/scripts/build-artifacts.sh:76-79 — bash \"$VALIDATOR\" \"$PACK\"; if [ $? = 1 ]; then PACK_INVALID=1; STALE=1 (new: wires the duplicate check's failure into the shared STALE gate)",
+      ".claude/skills/pr-review/scripts/build-artifacts.sh:400 — if [ \"$PACK_PRESENT\" = 1 ] && [ \"$STALE\" = 0 ] (gates ALL label probes/Dependencies on STALE, so the second copy's harsher verdict on the same condition empties everything, not just the one section)"
+    ]
+  },
+  {
+    "id": "t-06",
+    "file": ".claude/skills/pr-review/scripts/validate-pack.sh",
+    "line": 22,
+    "label": "dead-code",
+    "failure_mode": "Running tests/run.sh (or invoking validate-pack.sh directly) against tests/packs/bad-wiring-unfenced.md, bad-pipe-in-cell.md, bad-brief-syntax.md, bad-citation-unquoted.md, or bad-unknown-label.md: the validator only implements the heading-presence check, so it exits 0 (valid) for all five fixtures since each keeps every required heading line intact and violates only one of the five checks left as an unimplemented TODO, while tests/run.sh expects exit 1 for each — producing a spurious FAIL from the very test suite shipped in this diff.",
+    "evidence": [
+      "validate-pack.sh:18-20 — only the heading-presence loop calls fail()",
+      "validate-pack.sh:22-24 — TODO comment: wiring-fenced check, pipe-escaping, brief-probes bash -n, citation quoting, label closed-list — none implemented",
+      "tests/packs/bad-wiring-unfenced.md:9-14 — code fence after \"## Wiring files\" never closed, but all 5 required heading lines still present verbatim",
+      "tests/run.sh:24 — check \"bad-wiring-unfenced.md\" 1 expects the validator to reject this fixture",
+      "tests/run.sh:16 — validate-pack.sh exits 0 (all headings match) so the harness prints \"FAIL bad-wiring-unfenced.md (exit 0, want 1)\""
+    ]
+  },
+  {
+    "id": "t-07",
+    "file": ".claude/skills/pr-review/scripts/validate-pack.sh",
+    "line": 76,
+    "label": "validation",
+    "failure_mode": "A plain URL in prose (e.g. ending in .../file.html) outside any fence is matched by the bare-citation regex and flagged as an unwrapped file citation even though it is not a repo-path citation subject to staleness checking, wrongly invalidating the pack.",
+    "evidence": [
+      ".claude/skills/pr-review/scripts/validate-pack.sh:76 — regex matches the post-scheme //host/path/file.ext portion of a URL",
+      ".claude/skills/pr-review/scripts/validate-pack.sh:77 — kept because it isn't backtick-wrapped and contains '/'",
+      ".claude/skills/pr-review/scripts/validate-pack.sh:81 — fail() fires for the URL, exiting invalid"
+    ]
+  },
+  {
+    "id": "t-08",
+    "file": "tests/run.sh",
+    "line": 5,
+    "label": "validation",
+    "failure_mode": "git rev-parse --show-toplevel failing (not inside a git repo, or a foreign/dropped-in pack checkout) leaves ROOT empty with no guard, so VALIDATOR/PACKS are built from a wrong root and the test harness fails opaquely instead of exiting with a documented code",
+    "evidence": [
+      "tests/run.sh:5 — ROOT=\"$(git rev-parse --show-toplevel)\" with no success check",
+      "tests/run.sh:6 — VALIDATOR=\"$ROOT/.claude/skills/pr-review/scripts/validate-pack.sh\" built from unguarded ROOT",
+      ".claude/skills/pr-review/scripts/build-artifacts.sh:22 — sibling script guards the identical resolution with || { echo ...; exit 2; }",
+      "tests/run.sh:11 — bash \"$VALIDATOR\" ... invoked against the unchecked path, failing opaquely"
+    ]
+  },
+  {
+    "id": "t-09",
+    "file": ".claude/skills/pr-review/scripts/validate-pack.sh",
+    "line": 76,
+    "label": "validation",
+    "failure_mode": "Prose outside a fenced block containing a URL such as 'https://github.com/user/repo.md' is matched by the bare-citation regex once matching resumes past the disallowed ':' in the scheme, producing a slash-containing non-backtick match that trips fail(), rejecting a pack over a legitimate URL that was never a bare file citation.",
+    "evidence": [
+      ".claude/skills/pr-review/scripts/validate-pack.sh:76 — bare-citation regex has no scheme/protocol exclusion",
+      ".claude/skills/pr-review/scripts/validate-pack.sh:77 — grep -v '^`' | grep '/' keeps any non-backtick match containing a slash, including a URL fragment",
+      ".claude/skills/pr-review/scripts/validate-pack.sh:81 — fail(\"citation not backtick-wrapped...\") fires on the matched URL fragment"
+    ]
+  },
+  {
+    "id": "t-10",
+    "file": ".claude/skills/pr-review/scripts/build-artifacts.sh",
+    "line": 14,
+    "label": "contract",
+    "failure_mode": "This diff's D3 fix makes build-artifacts.sh write a new file, $OUT/brief-probes-stderr, whenever the domain pack's Brief probes block errors at runtime. The script's own header comment block, which this repo's contract convention requires document the script's interface, still lists only the pre-existing artifact set and was not updated, so a caller/tooling author reading the documented interface to know what's in $OUT has no way to learn this file exists.",
+    "evidence": [
+      ".claude/skills/pr-review/scripts/build-artifacts.sh:14 — header lists only patch.diff manifest.txt brief.txt wiring.txt (no mention of brief-probes-stderr)",
+      ".claude/skills/pr-review/scripts/build-artifacts.sh:376 — ( eval \"$PROBES\"; ... ) 2>\"$OUT/brief-probes-stderr\" newly writes that file into $OUT",
+      ".claude/skills/pr-review/SKILL.md:46 — the same diff's own $OUT artifact table also has no row for brief-probes-stderr, so neither doc surface reflects the new file"
+    ]
+  },
+  {
+    "id": "t-11",
+    "file": ".claude/skills/pr-review/scripts/validate-pack.sh",
+    "line": 22,
+    "label": "validation",
+    "failure_mode": "validate-pack.sh only implements the heading-presence check; the TODO at line 22 admits five other checks (wiring fence closure, label-probes field count, closed-list membership, brief-probes syntax check, citation backtick-wrapping) are unwritten. Fixtures bad-wiring-unfenced.md, bad-pipe-in-cell.md, bad-brief-syntax.md, bad-citation-unquoted.md, and bad-unknown-label.md all still contain the five exact heading lines, so the script exits 0 (valid) for packs the accompanying test suite (tests/run.sh) expects to be rejected with exit 1.",
+    "evidence": [
+      "tests/packs/bad-wiring-unfenced.md:11 — opens a fence under \"## Wiring files\" that is never closed before \"## Label probes\"",
+      ".claude/skills/pr-review/scripts/validate-pack.sh:17-20 — only implemented check is exact-match presence of the five headings via grep -qxF",
+      ".claude/skills/pr-review/scripts/validate-pack.sh:22 — TODO comment confirms fence-closure and four other checks are unimplemented",
+      "tests/run.sh:24 — check \"bad-wiring-unfenced.md\" 1 expects the validator to reject this pack",
+      "wrong outcome: running tests/run.sh yields FAIL bad-wiring-unfenced.md (exit 0, want 1) — validator returns an invalid pack as valid"
+    ]
+  },
+  {
+    "id": "t-12",
+    "file": ".claude/skills/pr-review/scripts/validate-pack.sh",
+    "line": 63,
+    "label": "validation",
+    "failure_mode": "An unclosed ```bash fence in Brief probes is never reported as unclosed because BRIEF_BLOCK's extraction awk (unlike the Wiring fence check) never resets on the next ## heading; it swallows subsequent section text into the bash -n check, and if that text happens to parse as valid bash, the malformed pack passes as valid.",
+    "evidence": [
+      ".claude/skills/pr-review/scripts/validate-pack.sh:63 — awk pattern lacks /^## /{f=0} reset present in sibling checks",
+      ".claude/skills/pr-review/scripts/validate-pack.sh:65 — bash -n runs on the over-captured block",
+      ".claude/skills/pr-review/scripts/validate-pack.sh:66 — no error surfaces, fail() never called, script exits 0"
+    ]
+  },
+  {
+    "id": "t-13",
+    "file": ".claude/skills/pr-review/scripts/build-artifacts.sh",
+    "line": 392,
+    "label": "control-flow",
+    "failure_mode": "A domain pack's ## Wiring files fenced block contains a line beginning with \"## \" while the fence is still open; the unconditional /^## /{f=0} reset rule fires regardless of fence state, silently truncating wiring.txt and dropping every legitimate wiring-file entry after that line.",
+    "evidence": [
+      ".claude/skills/pr-review/scripts/build-artifacts.sh:392 — /^## /{f=0} matches any line, no b (fence-open) guard",
+      ".claude/skills/pr-review/scripts/build-artifacts.sh:392 — f&&b print guard stops emitting once f flips to 0 mid-fence",
+      ".claude/skills/pr-review/scripts/build-artifacts.sh:388-393 — wiring.txt generation is gated only on PACK_PRESENT, never on STALE/PACK_INVALID, so the truncated file still ships",
+      "tests/packs/bad-wiring-unfenced.md:9-24 — existing fixture only covers the unclosed-fence case, not this mid-fence heading-lookalike case"
+    ]
+  },
+  {
+    "id": "t-14",
+    "file": ".claude/skills/pr-review/scripts/validate-pack.sh",
+    "line": 74,
+    "label": "validation",
+    "failure_mode": "An earlier unclosed fence anywhere in the file desyncs the file-wide fence toggle used by the citation check, causing later real sections (Label probes, Dependencies) to be treated as inside a fence and dropped from citation scanning; a bare unwrapped citation in that swallowed region is never checked or flagged.",
+    "evidence": [
+      ".claude/skills/pr-review/scripts/validate-pack.sh:74 — STRIPPED=$(awk '/^```/{f=!f;next} !f' \"$PACK\") toggles per raw fence marker with no heading anchor",
+      "tests/packs/bad-wiring-unfenced.md:11 — opening fence in Wiring files never closed before the next ## heading",
+      "tests/packs/bad-wiring-unfenced.md:14-21 — Label probes heading/table falls inside the mis-toggled 'in fence' state and is excluded from STRIPPED",
+      ".claude/skills/pr-review/scripts/validate-pack.sh:76-79 — BARE_CITES is derived only from STRIPPED, so a bare citation in the excluded region is never scanned"
+    ]
+  },
+  {
+    "id": "t-15",
+    "file": "tests/run-integration.sh",
+    "line": 32,
+    "label": "validation",
+    "failure_mode": "The D1 assertion is inverted relative to D3's: an if that treats grep failing to match — for any reason, including $OUT being empty/wrong or wiring.txt not existing at all — the same as a genuinely clean pass. A broken pipeline run reads as \"ok D1: wiring.txt clean\" instead of failing loudly, unlike the D3 check just below it which uses a non-inverted grep and correctly falls through to its FAIL branch on the same kind of missing-file case.",
+    "evidence": [
+      "tests/run-integration.sh:30-31 — OUT=\"$(... | grep '^OUT=' | cut -d= -f2)\", empty if build-artifacts.sh never printed that line",
+      "tests/run-integration.sh:32 — if grep -qE '\\$\\(|echo' \"$OUT/wiring.txt\" 2>/dev/null; then — no-match (including missing/empty file) falls to else",
+      "tests/run-integration.sh:36 — else branch prints \"ok   D1: wiring.txt clean\" even when nothing was actually checked",
+      "tests/run-integration.sh:43-47 — the D3 check right below uses the same shape without inversion and correctly FAILs on a missing/empty run.env"
+    ]
+  },
+  {
+    "id": "t-16",
+    "file": ".claude/skills/pr-review/scripts/validate-pack.sh",
+    "line": 44,
+    "label": "validation",
+    "failure_mode": "A Label probes probe cell containing a correctly GFM-escaped literal pipe (\\|) still splits into an extra field under awk -F'|' (which doesn't honor backslash escaping for a single-char FS), so a properly-formatted row is flagged as having an unescaped pipe and the pack is rejected.",
+    "evidence": [
+      ".claude/skills/pr-review/scripts/validate-pack.sh:42 — awk -F'|' splits on every literal '|', escaped or not",
+      ".claude/skills/pr-review/scripts/validate-pack.sh:44 — NF != 4 treats the extra field from an escaped pipe as a malformed row",
+      ".claude/skills/pr-review/scripts/validate-pack.sh:45 — prints invalid for a row that was correctly escaped"
+    ]
+  },
+  {
+    "id": "t-17",
+    "file": ".claude/skills/pr-review/scripts/validate-pack.sh",
+    "line": 65,
+    "label": "duplication",
+    "failure_mode": "The awk extraction that pulls the fenced bash block out of a pack's Brief probes section is copy-pasted byte-for-byte from build-artifacts.sh into the new validator instead of being shared. A change to the Brief probes fencing convention applied to one copy and not the other leaves the validator silently checking a rule that no longer matches what actually executes.",
+    "evidence": [
+      ".claude/skills/pr-review/scripts/build-artifacts.sh:351 — production extraction actually run by every /pr-review invocation",
+      ".claude/skills/pr-review/scripts/validate-pack.sh:65 — the identical awk script re-typed verbatim in the new validator",
+      "the two copies have no shared source; an edit to the fencing rule in one script without the matching edit in the other makes the validator's verdict diverge from what build-artifacts.sh actually parses"
+    ]
+  },
+  {
+    "id": "t-18",
+    "file": ".claude/skills/pr-review/scripts/validate-pack.sh",
+    "line": 63,
+    "label": "validation",
+    "failure_mode": "An unclosed bash fence in Brief probes whose visible content is syntactically valid bash causes BRIEF_BLOCK (no heading reset, unlike sibling awks) to accumulate past the missing close to EOF, absorbing the Dependencies prose harmlessly; bash -n then reports no syntax error and validate-pack.sh exits 0 despite the fence never being closed.",
+    "evidence": [
+      ".claude/skills/pr-review/scripts/validate-pack.sh:63 — BRIEF_BLOCK awk has no /^## /{f=0} reset, only f&&b&&/^```/{exit} to stop",
+      ".claude/skills/pr-review/scripts/validate-pack.sh:26 — sibling WIRING_FENCES awk resets f=0 on the next heading for comparison",
+      ".claude/skills/pr-review/scripts/validate-pack.sh:65 — bash -n runs over whatever BRIEF_BLOCK captured, with no separate 'fence closed' check for Brief probes",
+      ".claude/skills/pr-review/scripts/validate-pack.sh:60-68 — an unclosed fence containing only valid-syntax bash followed by ordinary Dependencies prose never triggers fail()"
+    ]
+  },
+  {
+    "id": "t-19",
+    "file": "tests/run-integration.sh",
+    "line": 6,
+    "label": "validation",
+    "failure_mode": "ROOT=\"$(git rev-parse --show-toplevel)\" has no || exit guard, unlike every sibling script this repo's own convention requires (build-artifacts.sh:22, add-regression-case.sh:21, run-regression-set.sh:20). If git rev-parse --show-toplevel fails, ROOT becomes an empty string; SCRIPTS and PACKS then resolve to wrong absolute paths, the subsequent cp of the real scripts into the throwaway repo silently fails, and the test proceeds to build-artifacts.sh calls that never actually run the intended script, cascading into the D1 assertion's blind-pass bug below instead of a clear, early error.",
+    "evidence": [
+      "tests/run-integration.sh:6 — ROOT=\"$(git rev-parse --show-toplevel)\" with no || { echo ...; exit N; }",
+      "tests/run-integration.sh:7-8 — SCRIPTS=\"$ROOT/...\", PACKS=\"$ROOT/...\" built directly off the unguarded ROOT",
+      "tests/run-integration.sh:20 — cp \"$SCRIPTS/build-artifacts.sh\" \"$SCRIPTS/validate-pack.sh\" ... fails silently if ROOT was empty, with nothing checking its exit status"
+    ]
+  },
+  {
+    "id": "t-20",
+    "file": ".claude/skills/pr-review/scripts/validate-pack.sh",
+    "line": 18,
+    "label": "duplication",
+    "failure_mode": "The five required domain-pack section headings and the grep -qxF matching loop that checks for them are hand-copied identically in build-artifacts.sh (which already runs this exact check before calling validate-pack.sh) and in validate-pack.sh itself. The diff adds model/FORMAT.md documenting this contract while leaving the enforcement logic duplicated across the two files, so a future edit to the heading list in one copy silently leaves the other checking a stale set, and the two copies' error wording has already drifted apart.",
+    "evidence": [
+      ".claude/skills/pr-review/scripts/build-artifacts.sh:52 — for h in the five heading strings / grep -qxF \"$h\" \"$PACK\" || MISSING_HEADINGS=...",
+      ".claude/skills/pr-review/scripts/validate-pack.sh:18 — the identical five-string list and grep -qxF \"$h\" \"$PACK\" || fail \"missing or renamed heading (model/FORMAT.md §1): $h\", a second hand-written copy of the same check with its own message",
+      "model/FORMAT.md:6 — new doc acknowledges build-artifacts.sh's extraction already assumed this exact contract, yet the diff still doesn't source the check from one shared file"
+    ]
+  }
+]
