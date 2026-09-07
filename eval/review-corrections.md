@@ -18,7 +18,7 @@ What replaces it is below: the reviewer learns from being corrected, and the num
 
 **This tally cannot count what the reviewer missed, and does not claim to.** A defect nobody noticed appears in neither the ledger nor the tally. The honest measure of a miss is prospective — running on live pull requests and watching what still reaches production — and that is phase-two work.
 
-Neither this tally nor a regression set (see `.claude/references/eval/regression-set/README.md` if this copy has one) substitutes for the other. This tally measures what the reviewer reports and how much of it survives a human read, per label. A regression set measures whether a *change to the reviewer* loses ground it already held — replaying past accepted findings against their original diffs.
+Neither this tally nor a regression set (see `eval/regression-set/README.md` if this copy has one) substitutes for the other. This tally measures what the reviewer reports and how much of it survives a human read, per label. A regression set measures whether a *change to the reviewer* loses ground it already held — replaying past accepted findings against their original diffs.
 
 ## How an entry is made
 

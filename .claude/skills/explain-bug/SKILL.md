@@ -99,7 +99,7 @@ Two or three sentences. What the code does, what it should do, and the concrete 
 
 Name the place in this codebase that already does it correctly, with a path and a line, and show that code.
 
-**Domain pack first.** If `.claude/references/pr-review-domain.md` exists, read its `## Label probes` row for this finding's label — that table carries this repo's own cited files, lines and functions (the repository that filters through `PaymentAccount.user_id`, the `_set_auth_cookies` helper, `.quantize(Decimal("0.01"), ROUND_HALF_UP)`, the `invalidateQueries` in `useCards.js`). Read it and quote it.
+**Domain pack first.** If `model/pr-review-domain.md` exists, read its `## Label probes` row for this finding's label — that table carries this repo's own cited files, lines and functions (the repository that filters through `PaymentAccount.user_id`, the `_set_auth_cookies` helper, `.quantize(Decimal("0.01"), ROUND_HALF_UP)`, the `invalidateQueries` in `useCards.js`). Read it and quote it.
 
 **No domain pack, or the row is empty.** Fall back to `.claude/agents/pr-review-scout.md`'s label table — it carries only generic, uncited guidance per label, not a citation to quote. Read it for what the label is looking for, then find the sibling in this codebase yourself and cite it directly.
 

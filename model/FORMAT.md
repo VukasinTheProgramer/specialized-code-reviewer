@@ -1,6 +1,6 @@
 # Domain pack format contract
 
-`.claude/references/pr-review-domain.md` (and any pack a foreign repo drops
+`model/pr-review-domain.md` (and any pack a foreign repo drops
 in via `PR_REVIEW_PACK`) has always been read against these six rules —
 `build-artifacts.sh`'s `awk`/`grep` extraction assumed every one of them
 without ever writing them down. `validate-pack.sh` enforces all six; its

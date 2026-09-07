@@ -64,7 +64,7 @@ and `references/{pr-review-domain.md,eval/}`. Nothing else in `.claude/` is touc
 /generate-domain-pack
 ```
 
-`.claude/references/pr-review-domain.md` ships **empty on purpose** — every citation in it is
+`model/pr-review-domain.md` ships **empty on purpose** — every citation in it is
 repo-specific and none of it transfers between repos. With an empty pack the reviewer still runs,
 but every label falls back to generic, uncited probes: it knows what an ownership bug looks like in
 general, and nothing about how *your* repository does ownership correctly. The pack is what lets a
@@ -111,9 +111,9 @@ The agents call four tools by exact name: `get_node`, `get_neighbors`, `query_gr
 
 | File | Fills with | How |
 |---|---|---|
-| `references/pr-review-domain.md` | This repo's cited probes, wiring files, stack prefixes, brief regexes, dependency shortlist | `/generate-domain-pack` |
-| `references/eval/review-corrections.md` | Every finding a human dismissed, written as a rule with the guard that makes the pattern safe **and** the condition that would make it unsafe — plus the per-label acceptance tally | By hand, after each run's verdicts |
-| `references/eval/regression-set/cases/` | Every finding a human accepted, as ground truth a later change to the reviewer must not lose | `scripts/add-regression-case.sh <label> <file> <line>` |
+| `model/pr-review-domain.md` | This repo's cited probes, wiring files, stack prefixes, brief regexes, dependency shortlist | `/generate-domain-pack` |
+| `eval/review-corrections.md` | Every finding a human dismissed, written as a rule with the guard that makes the pattern safe **and** the condition that would make it unsafe — plus the per-label acceptance tally | By hand, after each run's verdicts |
+| `eval/regression-set/cases/` | Every finding a human accepted, as ground truth a later change to the reviewer must not lose | `scripts/add-regression-case.sh <label> <file> <line>` |
 
 An entry seen **twice** in the corrections ledger gets promoted into the scout's own
 *Known non-defects* section; label corrections promote on first sighting. That promotion is the
@@ -127,7 +127,7 @@ All read by `build-artifacts.sh`.
 | Variable | Default | Does |
 |---|---|---|
 | `PR_REVIEW_NO_GRAPH` | unset | `1` skips the graphify refresh entirely (`GRAPH=off`). |
-| `PR_REVIEW_PACK` | `.claude/references/pr-review-domain.md` | Use a different domain pack — for testing, or running a foreign repo's pack. |
+| `PR_REVIEW_PACK` | `model/pr-review-domain.md` | Use a different domain pack — for testing, or running a foreign repo's pack. |
 | `PR_REVIEW_HEAD` | `HEAD` | Diff `BASE...<sha>` instead of the current HEAD, without checking anything out. Used to replay a historical diff for the regression set. |
 | `PR_REVIEW_LARGE_DIFF` | `2500` | Changed-line threshold for the large-diff warning. A warning only — nothing is ever trimmed. |
 | `PR_REVIEW_KEEP_DAYS` | `7` | Age before a stale `.git/pr-review.*` run directory is pruned. |

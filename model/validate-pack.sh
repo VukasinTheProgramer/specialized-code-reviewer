@@ -3,7 +3,7 @@
 # Never repairs, never stops at the first problem — prints every finding it
 # can, same doctrine the reviewer itself is held to.
 #
-#   usage: bash .claude/skills/pr-review/scripts/validate-pack.sh <pack-file>
+#   usage: bash model/validate-pack.sh <pack-file>
 # Exit codes: 0 valid   1 invalid (findings printed)   2 pack file missing   3 bad usage
 set -u
 

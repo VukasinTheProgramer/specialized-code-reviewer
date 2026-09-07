@@ -1,9 +1,9 @@
 ---
 name: generate-domain-pack
-description: (Re)generate `.claude/references/pr-review-domain.md`, the domain pack `/pr-review` reads for this repo's own cited probes, wiring files and dependencies. Runs from a base-branch-scoped worktree so citations never point at the diff under review, and enforces worktree cleanup as its own verified step rather than a step to remember. Use when `/pr-review` reports `PACK_PRESENT=0` or `PACK_STALE=1`, when a citation has been found to have drifted, or whenever asked to build/regenerate/refresh the domain pack — standalone, no need to run `/pr-review` first.
+description: (Re)generate `model/pr-review-domain.md`, the domain pack `/pr-review` reads for this repo's own cited probes, wiring files and dependencies. Runs from a base-branch-scoped worktree so citations never point at the diff under review, and enforces worktree cleanup as its own verified step rather than a step to remember. Use when `/pr-review` reports `PACK_PRESENT=0` or `PACK_STALE=1`, when a citation has been found to have drifted, or whenever asked to build/regenerate/refresh the domain pack — standalone, no need to run `/pr-review` first.
 ---
 
-Produces a complete replacement for `.claude/references/pr-review-domain.md`. Five sections, each row cited with a real `file:line` on the base branch. Never regenerate a pack that already passed `/pr-review`'s staleness check (`PACK_PRESENT=1 PACK_STALE=0`) — that rewrites the reviewer's own probe corpus mid-run and makes two reviews of the same diff different experiments.
+Produces a complete replacement for `model/pr-review-domain.md`. Five sections, each row cited with a real `file:line` on the base branch. Never regenerate a pack that already passed `/pr-review`'s staleness check (`PACK_PRESENT=1 PACK_STALE=0`) — that rewrites the reviewer's own probe corpus mid-run and makes two reviews of the same diff different experiments.
 
 ## Step 0 — Preflight
 
@@ -36,7 +36,7 @@ One `general-purpose` agent (Read, Grep, Glob, Write, and Bash — **restricted 
 4. **Brief probes** — this repo's own regexes for `SKILL.md` §4.1: router registration, route-component tag, money/amount type, error-code/enum map touch, migration path. No graphify use here — pattern authoring, not discovery.
 5. **Dependencies** — per stack, the direct third-party packages the app code actually imports (backend: grep top-level `import`/`from` statements under the app's own source dir, map back to manifest package names; frontend: the manifest's own `dependencies` object needs no grepping) — never the full transitive manifest, which defeats the point of a short first-pass list. Note any dependency invoked without a matching import (a migration tool run only via CLI, a driver pulled in transitively but load-bearing) separately.
 
-Hand the spawn `pr-review-domain.md`'s own five `##` headings as the schema to fill, not their content to copy. Output is a complete replacement file at `.claude/references/pr-review-domain.md`, written in the **main repo**, not the worktree.
+Hand the spawn `pr-review-domain.md`'s own five `##` headings as the schema to fill, not their content to copy. Output is a complete replacement file at `model/pr-review-domain.md`, written in the **main repo**, not the worktree.
 
 Two rules for the spawn, both about what a probe **is**:
 
@@ -49,7 +49,7 @@ Cite full repo-relative paths (`Backend/app/routers/api.py:25`), at least once p
 
 Before touching the worktree, confirm the written file is usable:
 
-- **Format contract**: `bash .claude/skills/pr-review/scripts/validate-pack.sh .claude/references/pr-review-domain.md` — all five headings, wiring fenced, label rows well-formed and closed-list, brief probes bash-clean, citations backtick-wrapped. Exit 0 required before continuing; a non-zero exit prints every problem, none of them fixable by hand-editing (see the two-rules discipline below) — go back to Step 2. This is the exact check `/pr-review` runs on every pack, so the two paths can never disagree on what "valid" means.
+- **Format contract**: `bash model/validate-pack.sh model/pr-review-domain.md` — all five headings, wiring fenced, label rows well-formed and closed-list, brief probes bash-clean, citations backtick-wrapped. Exit 0 required before continuing; a non-zero exit prints every problem, none of them fixable by hand-editing (see the two-rules discipline below) — go back to Step 2. This is the exact check `/pr-review` runs on every pack, so the two paths can never disagree on what "valid" means.
 - **Citation resolution against the worktree** — `validate-pack.sh` checks *shape* (backtick-wrapped), not *truth* (does the path exist, is the line in range); that still needs a targeted check here: every citation containing a `/` resolves against the **worktree** tree (`git -C <tmp> show <BASE>:<path>` succeeds, and the cited line is within the file's line count) — a citation that fails this is worse than an empty row, catch it here rather than leaving it for `/pr-review`'s own staleness check to find later.
 - No row cites a path or line that only exists on the working tree, not `<BASE>` — the giveaway is a citation to a file the manifest of *this diff* touches.
 

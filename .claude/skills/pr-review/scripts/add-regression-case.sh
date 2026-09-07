@@ -4,12 +4,12 @@
 #   usage:  bash .claude/skills/pr-review/scripts/add-regression-case.sh <label> <file> <line>
 #
 # Run right after a human gives a finding the "accepted" verdict (see
-# .claude/references/eval/review-corrections.md — "How an entry is made").
+# eval/review-corrections.md — "How an entry is made").
 # The case is pulled verbatim from .git/pr-review/findings.json, the fixed
 # path the last /pr-review run persisted (SKILL.md §5.4) — never hand-typed,
 # so ground truth is always the reviewer's own confirmed output, per 0.10.1.
 #
-# Writes .claude/references/eval/regression-set/cases/<id>.json. Idempotent:
+# Writes eval/regression-set/cases/<id>.json. Idempotent:
 # re-running for the same finding is a no-op, not a duplicate case.
 #
 # Exit codes: 0 ok   2 not a git repo   3 bad args
@@ -46,7 +46,7 @@ HEAD="$(jq -r '.head' "$FINDINGS")"
 HEAD_SHORT="${HEAD:0:8}"
 FILE_SLUG="${FILE//\//_}"
 CASE_ID="${HEAD_SHORT}-${LABEL}-${FILE_SLUG}-${LINE}"
-CASES_DIR=".claude/references/eval/regression-set/cases"
+CASES_DIR="eval/regression-set/cases"
 mkdir -p "$CASES_DIR"
 CASE_FILE="$CASES_DIR/${CASE_ID}.json"
 

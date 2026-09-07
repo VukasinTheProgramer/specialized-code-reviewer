@@ -20,7 +20,7 @@ set -u
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "error: not inside a git repository" >&2; exit 2; }
 cd "$ROOT"
 
-CASES_DIR=".claude/references/eval/regression-set/cases"
+CASES_DIR="eval/regression-set/cases"
 SCRIPT_DIR=".claude/skills/pr-review/scripts"
 CASES=()
 while IFS= read -r f; do CASES+=("$f"); done < <(find "$CASES_DIR" -name '*.json' 2>/dev/null | sort)

@@ -16,8 +16,9 @@ cd "$TMP"
 git init -q
 git config user.email test@test.com
 git config user.name test
-mkdir -p .claude/skills/pr-review/scripts
-cp "$SCRIPTS/build-artifacts.sh" "$SCRIPTS/validate-pack.sh" .claude/skills/pr-review/scripts/
+mkdir -p .claude/skills/pr-review/scripts model
+cp "$SCRIPTS/build-artifacts.sh" .claude/skills/pr-review/scripts/
+cp "$ROOT/model/validate-pack.sh" model/
 echo "# readme" > README.md
 echo one > file.txt
 git add -A && git commit -q -m init

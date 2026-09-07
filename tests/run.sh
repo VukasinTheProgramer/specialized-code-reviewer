@@ -3,7 +3,7 @@
 # Each bad-*.md pack must exit 1; good.md must exit 0.
 set -u
 ROOT="$(git rev-parse --show-toplevel)"
-VALIDATOR="$ROOT/.claude/skills/pr-review/scripts/validate-pack.sh"
+VALIDATOR="$ROOT/model/validate-pack.sh"
 PACKS="$ROOT/tests/packs"
 fail=0
 

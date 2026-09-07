@@ -21,7 +21,7 @@ set -u
 BASE_ARG="${1:-dev}"
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "error: not inside a git repository" >&2; exit 2; }
 cd "$ROOT"
-PACK="${PR_REVIEW_PACK:-.claude/references/pr-review-domain.md}"
+PACK="${PR_REVIEW_PACK:-model/pr-review-domain.md}"
 
 # ---------- 0.1 domain pack + ledger: existence and path:line staleness,
 # batched. One `git ls-files` call across every cited path from both files,
@@ -72,7 +72,7 @@ fi
 # same doctrine as PACK_STALE: never block a review, degrade to generic
 # probes and say so loudly. ----------
 PACK_INVALID=0
-VALIDATOR=".claude/skills/pr-review/scripts/validate-pack.sh"
+VALIDATOR="model/validate-pack.sh"
 if [ "$PACK_PRESENT" = 1 ] && [ -f "$VALIDATOR" ]; then
   VALIDATE_OUT="$(bash "$VALIDATOR" "$PACK" 2>&1)"
   if [ $? = 1 ]; then
@@ -85,7 +85,7 @@ fi
 # ---------- 0.1b ledger: same path:line staleness, scoped to the section that
 # actually reaches an agent (Known non-defects + Label corrections) — a drifted
 # citation in Run tally history doesn't feed any prompt, so it isn't checked. ----------
-LEDGER=".claude/references/eval/review-corrections.md"
+LEDGER="eval/review-corrections.md"
 LEDGER_PRESENT=0; LEDGER_STALE=0; LEDGER_CITES=""; KNOWN_NON_DEFECTS_TEXT=""
 if [ -f "$LEDGER" ]; then
   LEDGER_PRESENT=1
