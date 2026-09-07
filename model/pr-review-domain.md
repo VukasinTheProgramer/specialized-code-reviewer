@@ -81,7 +81,7 @@ statement:   A file another process, or the next run, may observe is never
              single atomic rename, or the location itself is created
              atomically unique so no two runs can collide on it.
 exemplar:    `.claude/skills/pr-review/SKILL.md:139`
-witnesses:   `.claude/skills/pr-review/scripts/add-regression-case.sh:56`
+witnesses:   `.claude/skills/pr-review/scripts/add-regression-case.sh:56-62`
              `.claude/skills/pr-review/scripts/build-artifacts.sh:260`
 guard:       the atomic primitive itself, `mv` for a same-filesystem
              rename or `mktemp`/`mktemp -d` for unique-path creation, is
@@ -155,6 +155,71 @@ unsafe_when: a file under `.claude/agents/` is edited directly instead of
              change triggers a regeneration that silently overwrites it,
              and nothing catches the drift unless check-generated.sh is
              actually run
+
+### logic.line-count-excludes-wc-l
+
+label:       logic
+statement:   A file's line count, wherever it feeds a bounds check or a
+             citation/EOF check, is computed with `awk 'END{print NR}'` or
+             an equivalent FNR-based awk pass, never `wc -l` — `wc -l`
+             counts newlines and undercounts by one on a file with no
+             trailing final newline, which silently misjudges a citation
+             on that file's real last line as past EOF.
+exemplar:    `model/validate-pack.sh:91`
+witnesses:   `.claude/skills/pr-review/scripts/build-artifacts.sh:154-156`
+             `.claude/skills/pr-review/SKILL.md:130`
+guard:       the specific awk idiom, `END{print NR}` or the
+             `FNR==1 && NR>1` file-boundary batch, is what is load-bearing,
+             never a plain `wc -l` on the target file
+unsafe_when: a new line-count check is added with `wc -l` instead of one
+             of these awk forms — it passes for every file that happens to
+             end with a trailing newline and only misfires on the ones
+             that don't, which is exactly the kind of bug that survives
+             testing on a few files and then fires on a real one
+
+### contract.script-header-documents-interface
+
+label:       contract
+statement:   A script meant to be invoked from another script or from
+             tests documents its own calling interface, a usage line and
+             every meaningful exit code, in a header comment block near
+             the top, next to the shebang.
+exemplar:    `.claude/skills/pr-review/scripts/build-artifacts.sh:4`
+witnesses:   `model/validate-pack.sh:6`
+             `.claude/skills/pr-review/scripts/add-regression-case.sh:9`
+             `.claude/skills/pr-review/scripts/run-regression-set.sh:9`
+             `.claude/skills/pr-review/scripts/check-regression-case.sh:9`
+guard:       the header comment itself, read by a caller before it ever
+             needs to catch a specific code or guess an argument order
+unsafe_when: a script gains a new required argument or a new meaningful
+             exit code without updating this header, so a caller has to
+             read the script body to know what changed
+deviations:  `harness/build-agents.sh:1`
+             `harness/check-generated.sh:1`
+
+### control-flow.no-errexit-for-collect-all-findings
+
+label:       control-flow
+statement:   A script that must report every problem it finds in one
+             pass, a validator, a review pipeline artifact builder, uses
+             set -u without -e, so one failed check does not abort the
+             run before later checks get a chance to report; each risky
+             point handles its own failure explicitly instead of relying
+             on errexit.
+exemplar:    `model/validate-pack.sh:8`
+witnesses:   `.claude/skills/pr-review/scripts/build-artifacts.sh:20`
+             `.claude/skills/pr-review/scripts/add-regression-case.sh:20`
+             `.claude/skills/pr-review/scripts/run-regression-set.sh:19`
+guard:       every risky command in these scripts is explicitly checked
+             (`|| { ...; exit N; }` or an if) rather than left to set -e
+             to catch, and validate-pack.sh's fail() accumulates INVALID=1
+             and keeps going instead of exiting on the first bad heading
+unsafe_when: a new check is added to one of these scripts as a bare
+             command with no explicit guard, trusting set -e to catch a
+             failure that -e was deliberately left off to catch — the
+             whole point of "print every finding" is then defeated the
+             first time an unrelated command's exit code would abort the
+             script under an accidentally-added -e later
 
 ## Promoted non-defects
 
