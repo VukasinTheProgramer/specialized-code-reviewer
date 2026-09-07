@@ -64,6 +64,24 @@ $h"
   PACK_WIRING_PATHS="$(awk '/^## Wiring files/{f=1;next} /^## /{f=0} f' "$PACK" | grep -E '^[A-Za-z0-9_./-]+$')"
 fi
 
+# ---------- 0.1c format validation — wiring-fenced, label field count,
+# closed-label membership, brief bash-fence + bash -n, citation
+# backtick-wrapping (validate-pack.sh; the heading check above is cheap and
+# stays inline, this covers everything it doesn't). An invalid pack is
+# treated exactly like a stale one below (STALE=1) rather than refused —
+# same doctrine as PACK_STALE: never block a review, degrade to generic
+# probes and say so loudly. ----------
+PACK_INVALID=0
+VALIDATOR=".claude/skills/pr-review/scripts/validate-pack.sh"
+if [ "$PACK_PRESENT" = 1 ] && [ -f "$VALIDATOR" ]; then
+  VALIDATE_OUT="$(bash "$VALIDATOR" "$PACK" 2>&1)"
+  if [ $? = 1 ]; then
+    PACK_INVALID=1; STALE=1
+    echo "warning: domain pack fails format validation — treating as stale (empty probes, generic fallback):" >&2
+    printf '%s\n' "$VALIDATE_OUT" | sed 's/^/  /' >&2
+  fi
+fi
+
 # ---------- 0.1b ledger: same path:line staleness, scoped to the section that
 # actually reaches an agent (Known non-defects + Label corrections) — a drifted
 # citation in Run tally history doesn't feed any prompt, so it isn't checked. ----------
@@ -342,6 +360,7 @@ added() { grep '^+' "$OUT/code.diff" | grep -v '^+++'; }
 # reads as "nothing here" instead of "something was taken out." In scope for
 # the pack's own probes below, same as added().
 removed() { grep '^-' "$OUT/code.diff" | grep -v '^---'; }
+BRIEF_DEGRADED=0
 {
   echo "scope:                  $SCOPE"
   echo "changed lines:          $CHANGED"
@@ -349,7 +368,16 @@ removed() { grep '^-' "$OUT/code.diff" | grep -v '^---'; }
   if [ "$PACK_PRESENT" = 1 ] && [ "$STALE" = 0 ]; then
     # the pack's own probes, verbatim, run in a subshell with added(), removed() and $OUT in scope
     PROBES="$(awk '/^## Brief probes/{f=1;next} f&&/^```bash/{b=1;next} f&&b&&/^```/{exit} f&&b' "$PACK")"
-    ( eval "$PROBES"; echo "router registered:      ${ROUTERS:-none}" ) 2>/dev/null
+    # D3 fix: stderr used to go straight to /dev/null — a broken probe block
+    # (bad quoting, an undefined command) failed silently mid-brief with no
+    # trace anywhere. Captured to $OUT/brief-probes-stderr instead; non-empty
+    # means the block errored, so flag it rather than let brief.txt look
+    # complete when a field silently never got written.
+    ( eval "$PROBES"; echo "router registered:      ${ROUTERS:-none}" ) 2>"$OUT/brief-probes-stderr"
+    if [ -s "$OUT/brief-probes-stderr" ]; then
+      BRIEF_DEGRADED=1
+      echo "note: domain pack's Brief probes block raised an error — brief.txt may be missing whatever it would have added: $(head -1 "$OUT/brief-probes-stderr")" >&2
+    fi
   else
     echo "migrations:             $(grep -c 'migrations/\|/versions/' "$OUT/manifest.txt")"
     echo "lockfiles/deps touched: $(grep -cE 'package\.json$|requirements\.txt$|pyproject\.toml$|go\.mod$|Cargo\.toml$' "$OUT/manifest.txt")"
@@ -358,7 +386,10 @@ removed() { grep '^-' "$OUT/code.diff" | grep -v '^---'; }
 
 # ---------- wiring files, verbatim from the pack (empty file when absent) ----------
 if [ "$PACK_PRESENT" = 1 ]; then
-  awk '/^## Wiring files/{f=1;next} f&&/^```/{if(b){exit} b=1;next} f&&b' "$PACK" > "$OUT/wiring.txt"
+  # D1 fix: reset f at the *next heading*, not only at the next fence — an
+  # unclosed fence used to make this scan straight past "## Wiring files"
+  # into whatever section followed, up to that section's own fence.
+  awk '/^## Wiring files/{f=1;next} /^## /{f=0} f&&/^```/{if(b){exit} b=1;next} f&&b' "$PACK" > "$OUT/wiring.txt"
 else : > "$OUT/wiring.txt"; fi
 
 # ---------- per-slice label probes, split once here instead of 4 spawns each reading
@@ -448,8 +479,9 @@ fi
   echo "SCOPE=$SCOPE"; echo "BE=$BE"; echo "FE=$FE"; echo "GRAPH=$GRAPH"
   echo "CHANGED=$CHANGED"; echo "FILES=$FILES"; echo "EMPTY=$EMPTY"; echo "DIRTY=$DIRTY"; echo "LARGE_DIFF=$LARGE_DIFF"
   echo "IMPACTED_CANDIDATES=$IMPACTED_CANDIDATES"; echo "IMPACTED_TRUNCATED=$IMPACTED_TRUNCATED"
-  echo "PACK_PRESENT=$PACK_PRESENT"; echo "PACK_STALE=$STALE"
+  echo "PACK_PRESENT=$PACK_PRESENT"; echo "PACK_STALE=$STALE"; echo "PACK_INVALID=$PACK_INVALID"
   echo "LEDGER_PRESENT=$LEDGER_PRESENT"; echo "LEDGER_STALE=$LEDGER_STALE"; echo "BASE_NOTE=$BASE_NOTE"
+  echo "BRIEF_DEGRADED=$BRIEF_DEGRADED"
 } > "$OUT/run.env"
 cat "$OUT/run.env"; echo "--- brief.txt ---"; cat "$BRIEF"
 [ "$DIRTY" = 1 ] && echo "note: uncommitted changes are not in this diff." >&2

@@ -29,7 +29,9 @@ Step numbers below are stable — agents, the workflow script and the rationale 
 
 Separately, the script also exact-matches all five of the pack's `## Heading` strings before extracting anything — every extraction below is an `awk` scoped to one heading, and a heading retyped even slightly (a capital letter, an extra space) makes that `awk` match nothing, degrading the section to silently empty with `PACK_STALE` still `0` (a heading edit has no citation to flag as stale). A missing/renamed heading warns by name on stderr; nothing gates on it — the same section just stays empty, same as if the pack lacked it entirely.
 
-**0.2** `PACK_PRESENT=0` or `PACK_STALE=1` → invoke the `generate-domain-pack` skill, which re-runs this script itself once it's done so the brief and wiring list come from the new pack. Do not regenerate a pack that passed the check.
+**0.1c** The script also runs `validate-pack.sh` against the pack — wiring section properly fenced, every `## Label probes` row splits into exactly one label and one probe cell, every label is one of the closed 15, `## Brief probes` has a `bash` fence whose content passes `bash -n`, and every `path/file.ext[:line]` citation is backtick-wrapped. A failure here sets `PACK_INVALID=1` **and** `PACK_STALE=1` — an invalid pack degrades exactly like a stale one (this is the same flag, not a second gate to check separately), with every finding printed to stderr. Run `bash .claude/skills/pr-review/scripts/validate-pack.sh <pack>` directly to see the full list.
+
+**0.2** `PACK_PRESENT=0` or `PACK_STALE=1` (which `PACK_INVALID=1` also sets) → invoke the `generate-domain-pack` skill, which re-runs this script itself once it's done so the brief and wiring list come from the new pack. Do not regenerate a pack that passed the check.
 
 **0.3** Existing, regenerated, or partially empty for lack of precedent — continue either way.
 
@@ -51,7 +53,7 @@ One deterministic script, no model in it. It resolves the base (§1.1), diffs `B
 | `probes-all.txt` | The four files above, concatenated — the scout's copy, since it has no slice restriction | A re-parse of the pack; it's just `cat` of the four |
 | `impacted-candidates.txt` | Unchanged files that reference something this diff changed, one `caller<TAB>changed-file` per line, capped and deduped (§1.9). Built by word-boundary `git grep` at `HEAD`, **independent of `GRAPH`** | Proof of a call, or a finding. A reference is a candidate; the scout confirms it against the file and drops what doesn't hold |
 | `known-non-defects.txt` | The ledger's `## Known non-defects` + `## Label corrections` sections only (empty when no ledger, or the heading has nothing under it — **not** gated on `LEDGER_STALE`, see 0.1) | `## Run tally` onward — that grows every verdicted run, the scout doesn't need it |
-| `run.env` | `OUT REPO_ROOT BASE HEAD SCOPE BE FE GRAPH CHANGED FILES EMPTY DIRTY LARGE_DIFF IMPACTED_CANDIDATES IMPACTED_TRUNCATED PACK_PRESENT PACK_STALE LEDGER_PRESENT LEDGER_STALE BASE_NOTE` | — |
+| `run.env` | `OUT REPO_ROOT BASE HEAD SCOPE BE FE GRAPH CHANGED FILES EMPTY DIRTY LARGE_DIFF IMPACTED_CANDIDATES IMPACTED_TRUNCATED PACK_PRESENT PACK_STALE PACK_INVALID LEDGER_PRESENT LEDGER_STALE BASE_NOTE BRIEF_DEGRADED` | — |
 
 **Read `run.env` and act on it before spawning anything:**
 
@@ -59,6 +61,7 @@ One deterministic script, no model in it. It resolves the base (§1.1), diffs `B
 - `EMPTY=1` → report "nothing to review" with the reason the script gave and **stop — do not spawn.** Empty findings from an empty patch render as a false clean report.
 - `BASE_NOTE` non-empty → repeat it in the report (only `origin/<base>` resolved, or HEAD is detached).
 - `DIRTY=1` → say "uncommitted changes are not in this diff" and continue.
+- `BRIEF_DEGRADED=1` → the domain pack's `## Brief probes` block errored partway through (stderr captured, see build-artifacts.sh's warning) — `brief.txt` may be missing a field it should have; say so and continue, same as any other degrade.
 - `LARGE_DIFF=1` → say the diff is large (`CHANGED` lines, `FILES` files) and that a review this size is slower and costlier than usual; continue and spawn normally — this is a warning, not a bail, and never changes what gets reviewed.
 - `GRAPH=on` means `graphify update` ran and succeeded (unconditional, every non-empty run once `graphify-out/graph.json` exists), and the scout/verifiers have live graphify MCP tools (`get_node`, `get_neighbors`, `query_graph`, `shortest_path` — registered in `.mcp.json`) to call themselves; `off` means no index exists yet, `graphify` isn't installed, `graphify update` failed, or `PR_REVIEW_NO_GRAPH=1` — the scout then resolves `related` through Grep/Glob and stamps `graph_coverage: "none"`, the correct path, not a degradation. `impacted` does **not** depend on this flag either way: the script's own `impacted-candidates.txt` (§1.9) is built by grep at `HEAD` and is handed to the scout on both paths — graph-on only sharpens it, by letting the scout prefer a real incoming edge where the two disagree.
 
