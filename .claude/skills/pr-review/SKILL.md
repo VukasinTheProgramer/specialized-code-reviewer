@@ -53,7 +53,7 @@ One deterministic script, no model in it. It resolves the base (§1.1), diffs `B
 | `probes-all.txt` | The four files above, concatenated — the scout's copy, since it has no slice restriction | A re-parse of the pack; it's just `cat` of the four |
 | `impacted-candidates.txt` | Unchanged files that reference something this diff changed, one `caller<TAB>changed-file` per line, capped and deduped (§1.9). Built by word-boundary `git grep` at `HEAD`, **independent of `GRAPH`** | Proof of a call, or a finding. A reference is a candidate; the scout confirms it against the file and drops what doesn't hold |
 | `known-non-defects.txt` | The ledger's `## Known non-defects` + `## Label corrections` sections only (empty when no ledger, or the heading has nothing under it — **not** gated on `LEDGER_STALE`, see 0.1) | `## Run tally` onward — that grows every verdicted run, the scout doesn't need it |
-| `run.env` | `OUT REPO_ROOT BASE HEAD SCOPE BE FE GRAPH CHANGED FILES EMPTY DIRTY LARGE_DIFF IMPACTED_CANDIDATES IMPACTED_TRUNCATED PACK_PRESENT PACK_STALE PACK_INVALID LEDGER_PRESENT LEDGER_STALE BASE_NOTE BRIEF_DEGRADED` | — |
+| `run.env` | `OUT REPO_ROOT READ_ROOT BASE HEAD SCOPE BE FE GRAPH CHANGED FILES EMPTY DIRTY LARGE_DIFF IMPACTED_CANDIDATES IMPACTED_TRUNCATED PACK_PRESENT PACK_STALE PACK_INVALID LEDGER_PRESENT LEDGER_STALE BASE_NOTE BRIEF_DEGRADED` | — |
 
 **Read `run.env` and act on it before spawning anything:**
 
@@ -64,6 +64,7 @@ One deterministic script, no model in it. It resolves the base (§1.1), diffs `B
 - `BRIEF_DEGRADED=1` → the domain pack's `## Brief probes` block errored partway through (stderr captured, see build-artifacts.sh's warning) — `brief.txt` may be missing a field it should have; say so and continue, same as any other degrade.
 - `LARGE_DIFF=1` → say the diff is large (`CHANGED` lines, `FILES` files) and that a review this size is slower and costlier than usual; continue and spawn normally — this is a warning, not a bail, and never changes what gets reviewed.
 - `GRAPH=on` means `graphify update` ran and succeeded (unconditional, every non-empty run once `graphify-out/graph.json` exists), and the scout/verifiers have live graphify MCP tools (`get_node`, `get_neighbors`, `query_graph`, `shortest_path` — registered in `.mcp.json`) to call themselves; `off` means no index exists yet, `graphify` isn't installed, `graphify update` failed, or `PR_REVIEW_NO_GRAPH=1` — the scout then resolves `related` through Grep/Glob and stamps `graph_coverage: "none"`, the correct path, not a degradation. `impacted` does **not** depend on this flag either way: the script's own `impacted-candidates.txt` (§1.9) is built by grep at `HEAD` and is handed to the scout on both paths — graph-on only sharpens it, by letting the scout prefer a real incoming edge where the two disagree.
+- `READ_ROOT` differs from `REPO_ROOT` only on a `PR_REVIEW_HEAD` replay — a scoped `git worktree` checked out at that historical head, so a verifier's own Read/Grep/Glob calls see the tree as it stood then, not the live one. Use `READ_ROOT` (not `REPO_ROOT`) as the `repoRoot` value in Step 3's payload; keep using `REPO_ROOT` for anything git-dir-relative (§5.4's `.git/pr-review/findings.json`), since a worktree's `.git` is a file, not a directory, and that path resolves wrong from inside one.
 
 Why these choices are what they are — three dots not two, `--unified=15`, which files are excluded, why `$OUT` is per-run — is in the rationale, §1. Change the script, not the run.
 
@@ -77,7 +78,7 @@ Computed by the script from the domain pack's `## Stack scope prefixes` (or, wit
 
 ```json
 {
-  "outDir": "<OUT>", "repoRoot": "<REPO_ROOT>", "base": "<BASE>", "head": "<HEAD>",
+  "outDir": "<OUT>", "repoRoot": "<READ_ROOT>", "base": "<BASE>", "head": "<HEAD>",
   "scope": "<SCOPE>", "be": <BE as 0|1>, "fe": <FE as 0|1>, "graph": "<GRAPH>",
   "briefText": "<contents of $OUT/brief.txt, verbatim>",
   "wiringFilesText": "<contents of $OUT/wiring.txt, verbatim — \"\" when empty>",
@@ -127,7 +128,7 @@ clears a different implementation shape.
 
 ### 5.3b Validate line numbers
 
-The workflow script never opens a file — no filesystem access there (see `workflow-authoring`) — so a `line` is whatever the spawn said, unchecked. You do have Read/Bash now: for every unique `file` across `findings`, run `git show $HEAD:<file> | awk 'END{print NR}'` from `repoRoot` (`HEAD` from `run.env`) — **not `wc -l`**, which counts newlines and undercounts by one on a file with no trailing newline, silently dropping a genuine finding on that file's last line. A missing file (non-zero exit) counts as 0 lines. Drop any finding whose `line` exceeds that count, or is `<= 0`; count the drops as `dropped_invalid_line`. Renumber the survivors' `n` sequentially — the same rule as the script's own numbering, just re-run after this drop.
+The workflow script never opens a file — no filesystem access there (see `workflow-authoring`) — so a `line` is whatever the spawn said, unchecked. You do have Read/Bash now: for every unique `file` across `findings`, run `git show $HEAD:<file> | awk 'END{print NR}'` from `REPO_ROOT` (`HEAD` from `run.env` — `git show` reads objects, so `REPO_ROOT` is correct here even on a `PR_REVIEW_HEAD` replay; no need for `READ_ROOT`) — **not `wc -l`**, which counts newlines and undercounts by one on a file with no trailing newline, silently dropping a genuine finding on that file's last line. A missing file (non-zero exit) counts as 0 lines. Drop any finding whose `line` exceeds that count, or is `<= 0`; count the drops as `dropped_invalid_line`. Renumber the survivors' `n` sequentially — the same rule as the script's own numbering, just re-run after this drop.
 
 This is the same silent-drop rule as everywhere else in this pipeline: a hallucinated line number is not correctable from here (no re-derivation, no "closest line" guess) — it is dropped, exactly as a malformed or unreachable candidate is.
 

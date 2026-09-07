@@ -5,10 +5,18 @@
 #   env:    PR_REVIEW_NO_GRAPH=1   skip the graphify refresh (tests, CI)
 #           PR_REVIEW_PACK=<path>  use another domain pack (tests; a foreign repo's pack)
 #           PR_REVIEW_HEAD=<sha>   diff BASE...<sha> instead of BASE...current-HEAD (eval corpus
-#                                  reruns against a fixed historical head, without checking out —
-#                                  keeps this worktree's own pipeline code, not that commit's)
+#                                  reruns against a fixed historical head). patch.diff/manifest.txt
+#                                  are always computed against the real repo's objects, but READ_ROOT
+#                                  (run.env) points spawned agents at a scoped `git worktree` checked
+#                                  out at <sha> instead of the live tree — otherwise a verifier's own
+#                                  Read/Grep/Glob calls see whatever the working tree looks like today,
+#                                  not the commit under review, and a since-renamed/moved file produces
+#                                  a wrong-but-plausible finding (see future-improvements/
+#                                  week-5-dirty-tree-stale-citation.md, Direction 2). Reused by SHA
+#                                  across repeated reruns of the same historical head, not recreated.
 #           PR_REVIEW_LARGE_DIFF=<n>  changed-line threshold for the LARGE_DIFF warning (default 2500)
-#           PR_REVIEW_KEEP_DAYS=<n>   age in days before a stale pr-review.* run dir is pruned (default 7)
+#           PR_REVIEW_KEEP_DAYS=<n>   age in days before a stale pr-review.* run dir, or a stale
+#                                  PR_REVIEW_HEAD replay worktree, is pruned (default 7)
 #           PR_REVIEW_IMPACTED_CAP=<n>  max impacted-caller candidates to emit (default 24)
 #
 # Writes into a fresh $OUT under .git/:  patch.diff  manifest.txt  brief.txt  wiring.txt
@@ -17,6 +25,7 @@
 # Prints run.env (key=value) followed by brief.txt. Exit codes:
 #   0 ok (EMPTY=1 in run.env when there is nothing to review)   2 not a git repo
 #   3 base does not resolve    4 no merge base (unrelated histories)    5 cannot create $OUT
+#   6 cannot create the PR_REVIEW_HEAD replay worktree
 set -u
 BASE_ARG="${1:-dev}"
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "error: not inside a git repository" >&2; exit 2; }
@@ -234,6 +243,35 @@ git merge-base "$BASE" "$HEAD_REF" >/dev/null 2>&1 || { echo "error: no merge ba
 HEAD_SHA="$(git rev-parse "$HEAD_REF")"
 if [ "$HEAD_REF" = HEAD ]; then
   git symbolic-ref -q HEAD >/dev/null || BASE_NOTE="${BASE_NOTE:+$BASE_NOTE; }HEAD is detached"
+fi
+
+# ---------- 1.3b READ_ROOT — where spawned agents read source files from ----------
+# Only diverges from $ROOT for a PR_REVIEW_HEAD replay: patch.diff/manifest.txt
+# above are computed via `git diff`, which reads git objects and is correct for
+# any commit pair regardless of working-tree state. A verifier's own Read/Grep/
+# Glob calls are not — they see the live filesystem at $ROOT, which drifts from
+# a historical HEAD_SHA the moment anything has been renamed, moved or
+# restructured since (this repo's own core/harness split did exactly that to
+# two week-2 corpus entries — see future-improvements/
+# week-5-dirty-tree-stale-citation.md, Direction 2). Named by SHA and reused,
+# not recreated, so replaying the same historical head twice (the normal eval
+# case) costs one checkout, not one per run.
+KEEP_DAYS_WT="${PR_REVIEW_KEEP_DAYS:-7}"
+WT_PREFIX="pr-review-replay-$(basename "$ROOT")-"
+find "${TMPDIR:-/tmp}" -maxdepth 1 -type d -name "${WT_PREFIX}*" -mtime "+$KEEP_DAYS_WT" 2>/dev/null \
+  | while IFS= read -r stale; do
+      [ -n "$stale" ] || continue
+      git worktree remove --force "$stale" 2>/dev/null || rm -rf "$stale"
+    done
+git worktree prune 2>/dev/null || true
+if [ -n "${PR_REVIEW_HEAD:-}" ]; then
+  READ_ROOT="${TMPDIR:-/tmp}/${WT_PREFIX}${HEAD_SHA}"
+  if [ ! -d "$READ_ROOT" ]; then
+    git worktree add --detach "$READ_ROOT" "$HEAD_SHA" >/dev/null 2>&1 \
+      || { echo "error: cannot create PR_REVIEW_HEAD replay worktree at $READ_ROOT for $HEAD_SHA" >&2; exit 6; }
+  fi
+else
+  READ_ROOT="$ROOT"
 fi
 
 # ---------- 1.4 excludes ----------
@@ -527,7 +565,7 @@ fi
 
 # ---------- run.env ----------
 {
-  echo "OUT=$OUT"; echo "REPO_ROOT=$ROOT"; echo "BASE=$BASE"; echo "HEAD=$HEAD_SHA"
+  echo "OUT=$OUT"; echo "REPO_ROOT=$ROOT"; echo "READ_ROOT=$READ_ROOT"; echo "BASE=$BASE"; echo "HEAD=$HEAD_SHA"
   echo "SCOPE=$SCOPE"; echo "BE=$BE"; echo "FE=$FE"; echo "GRAPH=$GRAPH"
   echo "CHANGED=$CHANGED"; echo "FILES=$FILES"; echo "EMPTY=$EMPTY"; echo "DIRTY=$DIRTY"; echo "LARGE_DIFF=$LARGE_DIFF"
   echo "IMPACTED_CANDIDATES=$IMPACTED_CANDIDATES"; echo "IMPACTED_TRUNCATED=$IMPACTED_TRUNCATED"
