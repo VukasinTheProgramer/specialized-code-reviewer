@@ -81,6 +81,7 @@ else
         field="$(printf '%s' "$vline" | cut -f3)"
         cpath_rel="$(printf '%s' "$vline" | cut -f4)"
         cline="$(printf '%s' "$vline" | cut -f5)"
+        celine="$(printf '%s' "$vline" | cut -f6)"
         cpath="${PACK_REPO_ROOT:-.}/$cpath_rel"
         if [ ! -e "$cpath" ]; then
           fail "record \`$rid\` ($field): citation does not resolve — no such file: $cpath_rel (model/FORMAT.md §3)"
@@ -88,8 +89,12 @@ else
           # awk 'END{print NR}', not wc -l — wc -l undercounts a file with no
           # trailing newline, the same off-by-one SKILL.md §5.3b guards against.
           CCOUNT=$(awk 'END{print NR}' "$cpath" 2>/dev/null); CCOUNT="${CCOUNT:-0}"
-          if [ "$cline" -gt "$CCOUNT" ] 2>/dev/null; then
-            fail "record \`$rid\` ($field): citation line $cline is past EOF — $cpath_rel has $CCOUNT lines (model/FORMAT.md §3)"
+          # Both ends of a `path:line-line2` range, not just the start — a
+          # start still inside a shrunk file with the end now past EOF is
+          # still stale (same bounds citation_ok() in build-artifacts.sh
+          # already applies for staleness).
+          if [ "$celine" -gt "$CCOUNT" ] 2>/dev/null; then
+            fail "record \`$rid\` ($field): citation line $celine is past EOF — $cpath_rel has $CCOUNT lines (model/FORMAT.md §3)"
           fi
         fi
         ;;

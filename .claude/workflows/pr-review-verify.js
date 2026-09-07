@@ -95,18 +95,29 @@ const VERIFIER_SCHEMA = {
   required: ['slice', 'hypotheses_received', 'hypotheses_unread', 'findings', 'dropped_unreachable'],
 }
 
+// `labels` is slice membership (pipeline-internals.md §"Slices"); `reportOrder`
+// is §5.3's "table order" for sorting findings within a slice, given only where
+// the two differ — which is Structure alone (pipeline-internals.md:50 vs :156).
+// That divergence is preserved, not resolved: changing it renumbers every
+// Structure finding in every report, which is a behavior change, not a cleanup.
 const SLICES = [
   { name: 'Access', agentType: 'pr-verify-access', labels: ['auth', 'ownership', 'security', 'data-exposure'] },
   { name: 'Data', agentType: 'pr-verify-data', labels: ['db', 'concurrency'] },
   { name: 'Answer', agentType: 'pr-verify-answer', labels: ['logic', 'validation', 'control-flow', 'state', 'contract'] },
-  { name: 'Structure', agentType: 'pr-verify-structure', labels: ['duplication', 'dead-code', 'layering', 'a11y'] },
+  { name: 'Structure', agentType: 'pr-verify-structure', labels: ['duplication', 'dead-code', 'layering', 'a11y'], reportOrder: ['layering', 'duplication', 'dead-code', 'a11y'] },
 ]
 
-const LABEL_ORDER = {
-  Access: ['auth', 'ownership', 'security', 'data-exposure'],
-  Data: ['db', 'concurrency'],
-  Answer: ['logic', 'validation', 'control-flow', 'state', 'contract'],
-  Structure: ['layering', 'duplication', 'dead-code', 'a11y'],
+// Derived, never hand-typed a second time — the sort table and the membership
+// table used to be two independent literals of the same 15 labels, with no way
+// to tell Structure's different order from a typo that had drifted. A label
+// missing from its slice's reportOrder would sit at indexOf === -1 and sort
+// ahead of everything, so the permutation is checked once here rather than
+// silently scrambling §5.3's numbering.
+const LABEL_ORDER = {}
+for (const s of SLICES) {
+  LABEL_ORDER[s.name] = s.reportOrder || s.labels
+  const missing = s.labels.filter((l) => !LABEL_ORDER[s.name].includes(l))
+  if (missing.length) log(`Warning: ${s.name} reportOrder omits ${missing.join(', ')} — those labels sort ahead of the slice instead of in table order.`)
 }
 
 const SLICE_ORDER = ['Access', 'Data', 'Answer', 'Structure']
@@ -210,8 +221,13 @@ for (const h of scout.hypotheses || []) {
 }
 for (const k of Object.keys(bucket)) bucket[k].sort((a, b) => a.rank - b.rank)
 
-const contextText = JSON.stringify(scout.context || [])
-const impactedText = JSON.stringify(scout.impacted || [])
+// `graph_coverage` is stripped here rather than shipped four times over: it
+// records which tool resolved `related` (graph hit vs. Grep fallback), which
+// is a fact a report reader wants and a spawn proving a trace has no use for
+// — no pr-verify-* definition reads it. scoutGraphCoverage below is tallied
+// from scout.context itself, not from this text, so the telemetry survives.
+const contextText = JSON.stringify((scout.context || []).map(({ file, kind, related }) => ({ file, kind, related })))
+const impactedText = JSON.stringify((scout.impacted || []).map(({ file, calls }) => ({ file, calls })))
 
 function verifierPrompt(hyps, probesText) {
   const hypText = hyps.length

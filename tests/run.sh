@@ -20,6 +20,7 @@ check() {
 }
 
 check "good.md"                  0
+check "good-pipe-in-prose.md"    0
 check "bad-heading-case.md"      1
 check "bad-wiring-unfenced.md"   1
 check "bad-brief-syntax.md"      1
@@ -34,5 +35,6 @@ check "bad-unknown-field.md"     1
 check "bad-duplicate-id.md"      1
 check "bad-empty-unsafe-when.md" 1
 check "bad-citation-eof.md"      1
+check "bad-citation-range-eof.md" 1
 
 exit "$fail"
