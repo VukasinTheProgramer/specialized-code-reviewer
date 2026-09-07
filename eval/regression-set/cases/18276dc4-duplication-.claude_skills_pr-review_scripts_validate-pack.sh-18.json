@@ -1,0 +1,12 @@
+{
+  "id": "18276dc4-duplication-.claude_skills_pr-review_scripts_validate-pack.sh-18",
+  "base": "87a033d",
+  "head": "18276dc4c24f843674dc0f7db4aca9f970551e84",
+  "added": "2026-09-07",
+  "finding": {
+    "label": "duplication",
+    "file": ".claude/skills/pr-review/scripts/validate-pack.sh",
+    "line": 18,
+    "failure_mode": "The five required pack-section headings and the exact-match grep check against them are re-declared independently here instead of reusing the identical list already in build-artifacts.sh; a future edit to the pack format contract applied to only one of the two copies makes build-artifacts.sh (warn-and-continue) and validate-pack.sh (hard-fail) disagree on whether the same pack is valid."
+  }
+}

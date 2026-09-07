@@ -44,6 +44,8 @@ Nothing here is ever phrased as "never report `<label>`". Rules name a pattern a
 
 ## Known non-defects
 
+- **A validator/check with a `TODO` comment naming exactly which checks are deferred, dated to a specific near-term day in a documented multi-day plan, whose own co-shipped test suite asserts the expected fail state for the deferred checks, is not a defect** — it's declared, tracked incompleteness, not an oversight. Safe when: the TODO names the specific deferred items (not "more checks later"), a concrete next step exists in project tracking (`todays-work/`, a plan doc) that closes it on a short horizon, and the test suite's expected-pass/fail split for the current state is itself part of the same commit (so the incompleteness is provably intentional, not accidentally shipped as done). **Unsafe when**: the TODO is vague or missing, the "next step" has no date or owner, or the code ships to a branch presented as complete (a PR titled "implement X" whose X isn't fully implemented) rather than an explicitly incremental commit. (`eval/runs/e01-monday.json` finding 1, dismissed 2026-09-07 — `validate-pack.sh`'s Monday skeleton, TODO named exactly the 5 deferred checks, completed Tuesday per `todays-work/week1-tuesday.md`.)
+
 ---
 
 ## Label corrections
@@ -56,6 +58,17 @@ The number that says whether this is working. One row per real run, appended aft
 
 | Date | Branch | Findings | Accepted | Dismissed | Mislabelled | Tokens |
 |---|---|---|---|---|---|---|
+| 2026-09-07 | week-02/baseline (5-entry corpus, `eval/corpus.md`) | 6 (+4 excluded, see note) | 1 | 1 | 0 | 496942 (e01) + 82521 (e02 retry) + 110920 (e03 retry) — partial totals; e02/e03's first (partly-failed) attempts and e04/e05 token counts not separately recorded |
+
+Four findings (`eval/runs/e02-tuesday.json` #1–2, `eval/runs/e05-friday.json`
+#1–2) are **excluded from this tally, not verdicted dismissed** — they
+compare the diff's historical commit pair against the *current* working
+tree (post-`core/`-split), not the tree as it stood at those commits. See
+`eval/runs/README.md`. Excluded because a dismissal implies the finding was
+fairly tested against its actual diff and failed that test; these weren't
+fairly testable at all — a corpus-construction defect, not a reviewer
+defect, so counting them either way would misstate the reviewer's real
+accuracy.
 
 ### Verdict log
 
@@ -63,6 +76,12 @@ One row per finding, appended as verdicts are given. **The tally counts; this lo
 
 | Run | Finding | Label | Verdict | Note |
 |---|---|---|---|---|
+| e01-monday | 1 | validation | dismissed | Self-documented incremental WIP — TODO names exactly the 5 deferred checks, dated "Tuesday," completed the next day. See Known non-defects. |
+| e01-monday | 2 | duplication | accepted | Real DRY risk (heading list re-declared instead of shared). Independently confirmed the predicted drift already happened: `validate-pack.sh` now cites `model/FORMAT.md §1` in its message, `build-artifacts.sh`'s copy doesn't. |
+| e02-tuesday | 1 | duplication | excluded | Methodology artifact — historical diff pre-dates the `core/` split; finding is true of the current tree, not the diffed commits. Not a fair test of the reviewer. |
+| e02-tuesday | 2 | dead-code | excluded | Same as above. |
+| e05-friday | 1 | duplication | excluded | Same as above. |
+| e05-friday | 2 | dead-code | excluded | Same as above. |
 
 ### Per-label acceptance
 
@@ -70,5 +89,7 @@ Derived from the verdict log, not maintained by hand. A label dismissed more oft
 
 | Label | Accepted | Dismissed | Mislabelled |
 |---|---|---|---|
+| duplication | 1 | 0 | 0 |
+| validation | 0 | 1 | 0 |
 
-Every label starts with no findings. **No findings is not a passing grade** — it is no data.
+Every label starts with no findings. **No findings is not a passing grade** — it is no data. `dead-code`, and every label besides `duplication`/`validation`, has no verdicted data this run — the 4 excluded findings (2 `duplication`, 2 `dead-code`) are not counted here per the exclusion rule above.
