@@ -16,7 +16,9 @@ body_path, doctrine_path, banner = sys.argv[1], sys.argv[2], sys.argv[3]
 
 with open(body_path) as f:
     body_text = f.read()
-header_text, _, section_content = body_text.partition("\n---\n")
+header_text, sep, section_content = body_text.partition("\n---\n")
+if not sep:
+    sys.exit(f"error: {body_path} has no lone '---' line separating its header from its body content")
 
 fields = {}
 for line in header_text.splitlines():

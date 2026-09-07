@@ -48,7 +48,7 @@ One deterministic script, no model in it. It resolves the base (§1.1), diffs `B
 | `patch.diff` | The hunks, 15 lines of context | — |
 | `manifest.txt` | Changed paths, one per line | File contents |
 | `brief.txt` | Fixed fields, values from grep/awk | Anything a model wrote; anything phrased as a suspicion |
-| `wiring.txt` | The pack's `## Wiring files` block verbatim (empty when no pack) | A list you invented |
+| `wiring.txt` | The pack's `## Wiring files` block verbatim (empty when no pack, or stale) | A list you invented |
 | `probes-access.txt`, `-data.txt`, `-answer.txt`, `-structure.txt` | The pack's `## Label probes` rows, pre-split by slice, plus its `## Dependencies` block appended verbatim under an `IN-BOUNDS DEPENDENCIES` heading (empty when no pack, or stale) | Anything the fallback prose in a verifier's own file already carries. The deps block is deliberately not label-shaped — it is reference material, never a 16th label |
 | `probes-all.txt` | The four files above, concatenated — the scout's copy, since it has no slice restriction | A re-parse of the pack; it's just `cat` of the four |
 | `impacted-candidates.txt` | Unchanged files that reference something this diff changed, one `caller<TAB>changed-file` per line, capped and deduped (§1.9). Built by word-boundary `git grep` at `HEAD`, **independent of `GRAPH`** | Proof of a call, or a finding. A reference is a candidate; the scout confirms it against the file and drops what doesn't hold |

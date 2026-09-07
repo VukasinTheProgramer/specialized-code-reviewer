@@ -75,9 +75,19 @@ const VERIFIER_SCHEMA = {
           label: { type: 'string' },
           source: { type: 'string', enum: ['sweep', 'hypothesis'] },
           failure_mode: { type: 'string' },
-          evidence: { type: 'array', items: { type: 'string' } },
+          // minItems mirrors the low end of core/doctrine.md's bar ("two to
+          // five ordered file:line steps") — evidence was previously not
+          // required at all, so a finding could clear this schema with the
+          // four other fields but no trace (explain-bug/SKILL.md already
+          // defends against exactly that gap, confirming it was real).
+          // No maxItems: doctrine states "two to five" as guidance on a
+          // typical trace, not a hard ceiling — capping it would let one
+          // finding needing a genuinely longer chain fail the whole slice's
+          // structured-output call (coarser than the old per-finding drop
+          // this schema is meant to tighten, not worsen).
+          evidence: { type: 'array', items: { type: 'string' }, minItems: 2 },
         },
-        required: ['file', 'line', 'label', 'failure_mode'],
+        required: ['file', 'line', 'label', 'failure_mode', 'evidence'],
       },
     },
     dropped_unreachable: { type: 'number' },
@@ -122,7 +132,10 @@ const labelToSlice = {}
 for (const s of SLICES) for (const l of s.labels) labelToSlice[l] = s.name
 // Labels a stack can't own: ownership/db need BE, state/a11y need FE.
 const STACK_GATE = { ownership: 'be', db: 'be', state: 'fe', a11y: 'fe' }
-const flags = { be, fe }
+// be/fe arrive from an LLM orchestrator following prose instructions (SKILL.md),
+// not type-checked code — Number(...) coerces "1"/1/true alike so a stringified
+// flag doesn't silently fail a strict === comparison (this exact bug shipped once).
+const flags = { be: Number(be) === 1, fe: Number(fe) === 1 }
 
 phase('Scout')
 const graphSection = graph === 'on'
@@ -188,7 +201,7 @@ const bucket = { Access: [], Data: [], Answer: [], Structure: [] }
 for (const h of scout.hypotheses || []) {
   const sliceName = labelToSlice[h.label]
   const gate = STACK_GATE[h.label]
-  const stackOk = !gate || flags[gate] === 1
+  const stackOk = !gate || flags[gate]
   if (!sliceName || !stackOk) {
     droppedHypotheses++
     continue
@@ -314,7 +327,7 @@ for (const s of SLICES) {
   for (const result of passResults) {
     returned += result.findings.length
     for (const f of result.findings) {
-      if (!f || !f.file || f.line == null || !f.label || !f.failure_mode) {
+      if (!f || !f.file || f.line == null || !f.label || !f.failure_mode || !Array.isArray(f.evidence) || f.evidence.length === 0) {
         droppedMalformed++
         continue
       }
@@ -352,15 +365,25 @@ const proven = deduped.filter((r) => r.source === 'hypothesis').length
 
 // A Set of matched sweep-finding keys, not a per-hypothesis counter — two
 // hypotheses landing on the same file+label must not double-credit the one
-// sweep finding underneath them (§5.3).
+// sweep finding underneath them (§5.3). Matching is by slice+file+label only
+// — hypotheses carry no line (scout's {file, label, one_line, related, rank}
+// shape has none) — so that's the finest disambiguation available; .find()
+// skips any sweep finding already claimed by an earlier hypothesis in this
+// same loop, so when two *distinct* sweep findings share a file+label (two
+// different lines), two hypotheses on that file+label each claim a
+// different one instead of both racing for the same first match while the
+// second genuinely-distinct finding goes uncounted.
 let alsoSwept = 0
 const sweptMatched = new Set()
 for (const s of SLICES) {
   for (const h of bucket[s.name]) {
-    const match = deduped.find((r) => r.slice === s.name && r.file === h.file && r.label === h.label && r.source === 'sweep')
+    const match = deduped.find((r) => {
+      if (!(r.slice === s.name && r.file === h.file && r.label === h.label && r.source === 'sweep')) return false
+      const key = `${r.slice}::${r.file}::${r.line}::${r.label}`
+      return !sweptMatched.has(key)
+    })
     if (!match) continue
     const key = `${match.slice}::${match.file}::${match.line}::${match.label}`
-    if (sweptMatched.has(key)) continue
     sweptMatched.add(key)
     alsoSwept++
   }

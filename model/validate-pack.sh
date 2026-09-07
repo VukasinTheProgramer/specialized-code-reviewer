@@ -11,13 +11,28 @@ PACK="${1:-}"
 [ -n "$PACK" ] || { echo "usage: validate-pack.sh <pack-file>" >&2; exit 3; }
 [ -r "$PACK" ] || { echo "error: cannot read '$PACK'" >&2; exit 2; }
 
+# Resolved relative to this script's own location, not $PWD — this script is
+# invoked from varied working directories (an absolute path from tests/run.sh,
+# a copy inside a throwaway repo from tests/run-integration.sh), and the
+# headings list must always be the copy sitting next to this script.
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+HEADINGS_FILE="$SCRIPT_DIR/pack-headings.txt"
+# A missing headings file under `set -u` (no `-e`) makes the `while` below a
+# silent no-op — the redirect fails, bash prints its own stderr line, but
+# the loop body never runs, MISSING_HEADINGS-equivalent stays empty, and
+# this validator would exit 0 (valid) for a pack that's actually malformed.
+# Fail loudly and distinctly instead of letting that pass as "checked".
+[ -r "$HEADINGS_FILE" ] || { echo "error: $HEADINGS_FILE not found — validator cannot check required headings" >&2; exit 2; }
+
 INVALID=0
 fail() { echo "invalid: $1"; INVALID=1; }
 
-# ---- check: all five section headings present, exact match ----
-for h in "## Stack scope prefixes" "## Wiring files" "## Label probes" "## Brief probes" "## Dependencies"; do
+# ---- check: all five section headings present, exact match — list shared
+# with build-artifacts.sh via model/pack-headings.txt, not duplicated ----
+while IFS= read -r h; do
+  [ -n "$h" ] || continue
   grep -qxF "$h" "$PACK" || fail "missing or renamed heading (model/FORMAT.md §1): $h"
-done
+done < "$HEADINGS_FILE"
 
 # ---- check: Wiring files section has a fenced block, closed before the
 # next heading — the exact shape D1 breaks (build-artifacts.sh's own

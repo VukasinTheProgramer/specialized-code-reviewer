@@ -17,6 +17,7 @@
 # Prints run.env (key=value) followed by brief.txt. Exit codes:
 #   0 ok (EMPTY=1 in run.env when there is nothing to review)   2 not a git repo
 #   3 base does not resolve    4 no merge base (unrelated histories)    5 cannot create $OUT
+#   6 model/pack-headings.txt missing — a checkout integrity problem, never expected
 set -u
 BASE_ARG="${1:-dev}"
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "error: not inside a git repository" >&2; exit 2; }
@@ -48,11 +49,17 @@ if [ -f "$PACK" ]; then
   # section matching nothing has no citations to flag as stale either. Catch
   # that directly — exact-match every required heading against the pack
   # before relying on any of the sections below.
+  # A missing headings file under `set -u` (no `-e`) makes the `while` below
+  # a silent no-op — the redirect fails, bash prints its own stderr line,
+  # but the loop body never runs, so MISSING_HEADINGS stays empty and this
+  # check silently passes a pack that could be missing every heading.
+  [ -r model/pack-headings.txt ] || { echo "error: model/pack-headings.txt not found — cannot check required headings" >&2; exit 6; }
   MISSING_HEADINGS=""
-  for h in "## Stack scope prefixes" "## Wiring files" "## Label probes" "## Brief probes" "## Dependencies"; do
+  while IFS= read -r h; do
+    [ -n "$h" ] || continue
     grep -qxF "$h" "$PACK" || MISSING_HEADINGS="$MISSING_HEADINGS
 $h"
-  done
+  done < model/pack-headings.txt
   MISSING_HEADINGS="$(printf '%s\n' "$MISSING_HEADINGS" | grep -v '^$')"
   if [ -n "$MISSING_HEADINGS" ]; then
     echo "warning: domain pack is missing (or has renamed) these section headings — each degrades silently to empty otherwise: $(printf '%s' "$MISSING_HEADINGS" | tr '\n' '|' | sed 's/|/, /g; s/, $//')" >&2
@@ -61,7 +68,12 @@ $h"
   # is shorthand for a full path cited earlier in the same row, and `brief.txt` is an artifact
   # name — checking those against the tree flagged the pack stale on every run.
   PACK_CITES="$(extract_citations "$PACK" | sort -u)"
-  PACK_WIRING_PATHS="$(awk '/^## Wiring files/{f=1;next} /^## /{f=0} f' "$PACK" | grep -E '^[A-Za-z0-9_./-]+$')"
+  # Scoped to inside the fence, same as wiring.txt's own extraction below —
+  # scanning the whole section (prose, the fence markers themselves) let a
+  # stray placeholder word outside the fence (e.g. "TBD") get treated as a
+  # citation, failing path_exists and setting STALE=1 for a pack whose
+  # actual wiring paths were fine.
+  PACK_WIRING_PATHS="$(awk '/^## Wiring files/{f=1;next} /^## /{f=0} f&&/^```/{if(b){exit} b=1;next} f&&b' "$PACK" | grep -E '^[A-Za-z0-9_./-]+$')"
 fi
 
 # ---------- 0.1c format validation — wiring-fenced, label field count,
@@ -100,7 +112,13 @@ if [ -n "$ALL_TOKENS" ]; then
   TRACKED="$(printf '%s\n' "$ALL_TOKENS" | sed 's/:.*//' | sort -u | xargs git ls-files -- 2>/dev/null)"
 fi
 path_exists() {
-  if [ "${1%/}" != "$1" ]; then printf '%s\n' "$TRACKED" | grep -q "^$1"
+  # Literal-prefix / literal-exact match via awk's index(), not grep's regex
+  # — a bare "^$1" or "$1" fed to grep treats any `.`/`*`/etc. in the path as
+  # a metacharacter, so two same-shaped paths differing only by a literal
+  # dot can cross-match (confirmed: `card_service.py` matched a line for
+  # `card_serviceXpy` under the old grep-as-regex version).
+  if [ "${1%/}" != "$1" ]; then
+    printf '%s\n' "$TRACKED" | awk -v p="$1" 'index($0,p)==1{f=1} END{exit !f}'
   else printf '%s\n' "$TRACKED" | grep -qxF "$1"; fi
 }
 
@@ -125,7 +143,7 @@ LINE_PATHS_EOF
       2>/dev/null)"  # one call, every file's count via the FNR==1/NR>1 file-boundary — not gawk's ENDFILE, this repo's awk doesn't have it
   fi
 fi
-line_count_of() { printf '%s\n' "$LINE_COUNTS" | grep "^$1 " | awk '{print $2}'; }
+line_count_of() { printf '%s\n' "$LINE_COUNTS" | awk -v p="$1" '$1==p{print $2; exit}'; }
 
 # citation_ok returns 0 (OK) or 1 (STALE) for one `path` or `path:line`/`path:line-line2`
 # citation — path existence plus, when a line number is present, a bounds check
@@ -384,8 +402,11 @@ BRIEF_DEGRADED=0
   fi
 } > "$BRIEF"
 
-# ---------- wiring files, verbatim from the pack (empty file when absent) ----------
-if [ "$PACK_PRESENT" = 1 ]; then
+# ---------- wiring files, verbatim from the pack (empty file when absent or
+# stale — same gate as probes-*.txt below; wiring.txt used to skip the STALE
+# check, so an invalid/stale pack could still hand every verifier a
+# pre-cleared file list, contradicting the documented safe-degrade). ----------
+if [ "$PACK_PRESENT" = 1 ] && [ "$STALE" = 0 ]; then
   # D1 fix: reset f at the *next heading*, not only at the next fence — an
   # unclosed fence used to make this scan straight past "## Wiring files"
   # into whatever section followed, up to that section's own fence.

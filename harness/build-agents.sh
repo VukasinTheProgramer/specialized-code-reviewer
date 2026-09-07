@@ -32,4 +32,11 @@ for body in core/agents/verify-*.body.md; do
     > "$OUT_DIR/pr-${slug}.md"
 done
 
-echo "built: $(ls "$OUT_DIR"/*.md | wc -l | tr -d ' ') agent(s) in $OUT_DIR"
+# find + wc -l, not `ls ... | wc -l` — ls fails (invisibly to set -e, buried
+# inside a command substitution) when $OUT_DIR ends up empty, which used to
+# silently print "built: 0 agent(s)" as if that were success. wc -l always
+# exits 0 even on empty input, unlike `grep -c .` which would exit 1 here
+# and abort under set -e before the explicit check below ever ran.
+COUNT="$(find "$OUT_DIR" -maxdepth 1 -name '*.md' | wc -l | tr -d ' ')"
+[ "$COUNT" -gt 0 ] || { echo "error: 0 agent files written to $OUT_DIR — nothing to build?" >&2; exit 1; }
+echo "built: $COUNT agent(s) in $OUT_DIR"
