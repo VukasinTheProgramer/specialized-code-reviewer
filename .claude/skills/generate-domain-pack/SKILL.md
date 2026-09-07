@@ -49,26 +49,30 @@ Cite full repo-relative paths (`Backend/app/routers/api.py:25`), at least once p
 
 Before touching the worktree, confirm the written file is usable:
 
-- All five `##` headings present.
-- Every citation containing a `/` resolves against the **worktree** tree (`git -C <tmp> show <BASE>:<path>` succeeds, and the cited line is within the file's line count) — a citation that fails this is worse than an empty row, catch it here rather than leaving it for `/pr-review`'s own staleness check to find later.
+- **Format contract**: `bash .claude/skills/pr-review/scripts/validate-pack.sh .claude/references/pr-review-domain.md` — all five headings, wiring fenced, label rows well-formed and closed-list, brief probes bash-clean, citations backtick-wrapped. Exit 0 required before continuing; a non-zero exit prints every problem, none of them fixable by hand-editing (see the two-rules discipline below) — go back to Step 2. This is the exact check `/pr-review` runs on every pack, so the two paths can never disagree on what "valid" means.
+- **Citation resolution against the worktree** — `validate-pack.sh` checks *shape* (backtick-wrapped), not *truth* (does the path exist, is the line in range); that still needs a targeted check here: every citation containing a `/` resolves against the **worktree** tree (`git -C <tmp> show <BASE>:<path>` succeeds, and the cited line is within the file's line count) — a citation that fails this is worse than an empty row, catch it here rather than leaving it for `/pr-review`'s own staleness check to find later.
 - No row cites a path or line that only exists on the working tree, not `<BASE>` — the giveaway is a citation to a file the manifest of *this diff* touches.
 
-A row that fails this check gets dropped, not patched — the two-rules-above discipline means a bad citation isn't fixable by editing it, only by re-deriving it from the worktree.
+A row that fails either check gets dropped, not patched — the two-rules-above discipline means a bad citation isn't fixable by editing it, only by re-deriving it from the worktree.
 
 ## Step 4 — Refresh the run-scoped artifacts
 
 ```bash
-bash .claude/skills/pr-review/scripts/build-artifacts.sh
+bash .claude/skills/pr-review/scripts/build-artifacts.sh <BASE>
 ```
 
-So `brief.txt`, `wiring.txt` and the `probes-*.txt`/`known-non-defects.txt` files (consumed by `/pr-review` Step 3) come from the new pack on the next run. Confirm the printed `run.env` shows `PACK_PRESENT=1 PACK_STALE=0` — a non-zero `PACK_STALE` here means Step 3 missed a bad citation, go back to it.
+D8: `<BASE>` is required here — the script defaults to `dev` with no argument, which exits 3 on any repo whose integration branch isn't named `dev` (this one included, base `main`). Pass the same `<BASE>` Step 1 used.
+
+So `brief.txt`, `wiring.txt` and the `probes-*.txt`/`known-non-defects.txt` files (consumed by `/pr-review` Step 3) come from the new pack on the next run. Confirm the printed `run.env` shows `PACK_PRESENT=1 PACK_STALE=0` — a non-zero `PACK_STALE` here is not automatically a Step 3 miss, see the Error handling table below before assuming it is.
 
 ## Step 5 — Remove the worktree (mandatory, verified, never skipped)
 
 ```bash
-git worktree remove <tmp>
+git worktree remove --force <tmp>
 git worktree list | grep -F "<tmp>" && echo "FAILED: <tmp> still listed — remove it manually before finishing" || echo "worktree removed"
 ```
+
+D7: `--force` is required — Step 1's `graphify update <tmp>` leaves `<tmp>/graphify-out/` as untracked files inside the worktree, and a plain `git worktree remove` refuses to remove a worktree with untracked or modified content. Without it, cleanup fails *exactly* when graphify succeeded — the one case this step exists to guarantee never gets skipped.
 
 Run this **even if Step 2 or Step 3 failed** — an abandoned worktree's `graphify-out/` is scoped to a point-in-time base checkout and must never be mistaken for the main repo's index by a later, unrelated task. A failed generation is reported as a failure; a failed generation that also leaves a stray worktree is two problems. Do not report this skill as finished until the `grep` above comes back empty.
 
@@ -80,4 +84,4 @@ Run this **even if Step 2 or Step 3 failed** — an abandoned worktree's `graphi
 | `graphify update <tmp>` fails or `graphify` isn't installed | Continue — Step 2 falls back to Grep/Glob, same as `/pr-review` itself does with no graph. |
 | Step 2's spawn crashes or times out | Go straight to Step 5 (cleanup), then report the failure. The old pack, if any, is untouched — Step 2 only writes on completion. |
 | Step 3 finds every row fails its own citation check | The generation ran against the wrong branch or a stale worktree graph — do not write a pack this empty; go to Step 5, then re-run from Step 1. |
-| `PACK_STALE=1` after Step 4 | Step 3 missed something. Return to Step 3 before touching the worktree — do not proceed to Step 5 with a known-bad pack still in place. |
+| `PACK_STALE=1` after Step 4 | Not necessarily a Step 3 miss — Step 3 validates citations against `<BASE>` in the **worktree**, Step 4 runs `build-artifacts.sh` against the **current branch's working tree**, and those can legitimately disagree: a file deleted on the current branch but still present on `<BASE>` resolves fine in Step 3 and reads as stale in Step 4. Check whether the citation actually still exists on the current branch before assuming Step 3 erred; only re-run Step 3 if it does. |
