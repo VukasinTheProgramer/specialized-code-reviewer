@@ -37,6 +37,10 @@ extract_citations() {  # every `path.ext[:line[-line2]]` citation containing a '
   grep -oE '`[A-Za-z0-9_./-]+\.[a-zA-Z]+(:[0-9]+(-[0-9]+)?)?`' "$1" 2>/dev/null | tr -d '`' | grep '/'
 }
 
+# missing_pack_headings() — shared with model/validate-pack.sh, not
+# duplicated (see model/pack-heading-check.sh for why).
+. model/pack-heading-check.sh
+
 # The pack's ## Wiring files fenced block, verbatim — shared between
 # PACK_WIRING_PATHS (staleness checking, below) and $OUT/wiring.txt (handed
 # to every verifier, further down). Was two copy-pasted awk one-liners; a
@@ -57,30 +61,20 @@ if [ -f "$PACK" ]; then
   # section matching nothing has no citations to flag as stale either. Catch
   # that directly — exact-match every required heading against the pack
   # before relying on any of the sections below.
-  # A missing headings file under `set -u` (no `-e`) makes the `while` below
-  # a silent no-op — the redirect fails, bash prints its own stderr line,
-  # but the loop body never runs, so MISSING_HEADINGS stays empty and this
-  # check silently passes a pack that could be missing every heading.
-  # Missing here degrades exactly like a stale/invalid pack (STALE=1,
+  # A missing headings file makes missing_pack_headings() return 1 rather
+  # than silently printing nothing — that distinction matters here, or an
+  # unreadable list would be indistinguishable from "checked, nothing
+  # missing". Missing degrades exactly like a stale/invalid pack (STALE=1,
   # loud warning, generic fallback probes) rather than hard-exiting the
   # whole script — this file's own doctrine everywhere else is "never
   # block a review, degrade instead," and a checkout missing its own
   # tooling asset is the same kind of can't-fully-verify-this-pack state
   # PACK_STALE already exists to represent, not a new class of hard stop.
-  if [ ! -r model/pack-headings.txt ]; then
+  if ! MISSING_HEADINGS="$(missing_pack_headings model/pack-headings.txt "$PACK")"; then
     echo "warning: model/pack-headings.txt not found — cannot check required headings; treating pack as stale (generic fallback probes)." >&2
     STALE=1; PACK_INVALID=1
-  else
-    MISSING_HEADINGS=""
-    while IFS= read -r h; do
-      [ -n "$h" ] || continue
-      grep -qxF "$h" "$PACK" || MISSING_HEADINGS="$MISSING_HEADINGS
-$h"
-    done < model/pack-headings.txt
-    MISSING_HEADINGS="$(printf '%s\n' "$MISSING_HEADINGS" | grep -v '^$')"
-    if [ -n "$MISSING_HEADINGS" ]; then
-      echo "warning: domain pack is missing (or has renamed) these section headings — each degrades silently to empty otherwise: $(printf '%s' "$MISSING_HEADINGS" | tr '\n' '|' | sed 's/|/, /g; s/, $//')" >&2
-    fi
+  elif [ -n "$MISSING_HEADINGS" ]; then
+    echo "warning: domain pack is missing (or has renamed) these section headings — each degrades silently to empty otherwise: $(printf '%s' "$MISSING_HEADINGS" | tr '\n' '|' | sed 's/|/, /g; s/, $//')" >&2
   fi
   # Only repo-relative citations (containing a '/') are paths. A bare `card_repository.py:59`
   # is shorthand for a full path cited earlier in the same row, and `brief.txt` is an artifact

@@ -18,7 +18,7 @@ git config user.email test@test.com
 git config user.name test
 mkdir -p .claude/skills/pr-review/scripts model
 cp "$SCRIPTS/build-artifacts.sh" .claude/skills/pr-review/scripts/
-cp "$ROOT/model/validate-pack.sh" "$ROOT/model/pack-headings.txt" model/
+cp "$ROOT/model/validate-pack.sh" "$ROOT/model/pack-headings.txt" "$ROOT/model/pack-heading-check.sh" model/
 echo "# readme" > README.md
 echo one > file.txt
 git add -A && git commit -q -m init
