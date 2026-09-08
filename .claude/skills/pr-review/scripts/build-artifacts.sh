@@ -22,6 +22,8 @@
 #                                  PR_REVIEW_HEAD replay worktree, is pruned (default 7)
 #           PR_REVIEW_IMPACTED_CAP=<n>  max impacted-caller candidates to emit (default 24)
 #           PR_REVIEW_CLASSIFICATION_CAP=<n>  max classification candidates to emit (default 40)
+#           PR_REVIEW_UNIFIED=<n>  diff context width for both patch.diff and code.diff (default 15;
+#                                  future-improvements/week-6-diff-context-width.md's A/B knob)
 #
 # Writes into a fresh $OUT under .git/:  patch.diff  manifest.txt  brief.txt  wiring.txt
 #   probes-{access,data,answer,structure,all}.txt  known-non-defects.txt
@@ -311,7 +313,8 @@ KEEP_DAYS="${PR_REVIEW_KEEP_DAYS:-7}"
 find "$GIT_DIR" -maxdepth 1 -type d -name 'pr-review.*' -mtime "+$KEEP_DAYS" -exec rm -rf {} + 2>/dev/null
 OUT="$(mktemp -d "$GIT_DIR/pr-review.XXXXXX")" || { echo "error: cannot create run directory under .git/" >&2; exit 5; }
 OUT="$(cd "$OUT" && pwd)"
-git diff --unified=15 "$BASE...$HEAD_REF" -- . "${EXCLUDES[@]}" > "$OUT/patch.diff"   || { echo "error: cannot write patch.diff" >&2; exit 5; }
+UNIFIED="${PR_REVIEW_UNIFIED:-15}"
+git diff "--unified=$UNIFIED" "$BASE...$HEAD_REF" -- . "${EXCLUDES[@]}" > "$OUT/patch.diff"   || { echo "error: cannot write patch.diff" >&2; exit 5; }
 git diff --name-only  "$BASE...$HEAD_REF" -- . "${EXCLUDES[@]}" > "$OUT/manifest.txt" || { echo "error: cannot write manifest.txt" >&2; exit 5; }
 CHANGED=$(git diff --numstat "$BASE...$HEAD_REF" -- . "${EXCLUDES[@]}" | awk '{a+=$1; d+=$2} END {print a+d+0}')
 FILES=$(grep -c . "$OUT/manifest.txt")
@@ -447,7 +450,7 @@ if [ "$CODE_DIRS_IS_MANIFEST" = 1 ]; then
   # `git diff` traversal over the same range.
   cp "$OUT/patch.diff" "$OUT/code.diff"
 elif [ "${#CODE_DIRS[@]}" -gt 0 ]; then
-  git diff --unified=15 "$BASE...$HEAD_REF" -- "${CODE_DIRS[@]}" "${EXCLUDES[@]}" > "$OUT/code.diff"
+  git diff "--unified=$UNIFIED" "$BASE...$HEAD_REF" -- "${CODE_DIRS[@]}" "${EXCLUDES[@]}" > "$OUT/code.diff"
 else : > "$OUT/code.diff"; fi
 added() { grep '^+' "$OUT/code.diff" | grep -v '^+++'; }
 # Deleted lines matter as much as added ones — a probe over added() alone is
