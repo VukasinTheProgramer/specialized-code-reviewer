@@ -1,0 +1,50 @@
+[
+  {
+    "id": "u-01",
+    "file": "src/components/Footer.astro",
+    "line": 12,
+    "label": "duplication",
+    "failure_mode": "Phone number, email, and address are hardcoded as identical literal strings in both Footer.astro and contact.astro with no shared constants module backing either; updating the contact info on the contact page (or vice versa) without also updating the footer leaves the two showing different contact details site-wide.",
+    "evidence": [
+      "src/components/Footer.astro:12-14 — <p>Tel: +381 60 000 0000</p> / Email: info@boskov.rs / Adresa: Ulica 1, Grad, Srbija",
+      "src/pages/contact.astro:11-13 — the identical three literal strings repeated verbatim",
+      "src/layouts/Layout.astro:24 — Footer is rendered on every page, so both hardcoded copies ship together with no single source of truth"
+    ]
+  },
+  {
+    "id": "u-02",
+    "file": "src/pages/products/[id].astro",
+    "line": 13,
+    "label": "duplication",
+    "failure_mode": "The initials-from-name derivation (split on space, take first letter of each word, keep first two, join) is copy-pasted verbatim from ProductCard.astro into the product detail page instead of being reused. If the initials rule changes, only one of the two copies is likely to be updated, so the product list/home page and the product detail page will silently render different initials for the same product.",
+    "evidence": [
+      "src/components/ProductCard.astro:9-13 — const initials = product.name.split(\" \").map((w) => w[0]).slice(0, 2).join(\"\")",
+      "src/pages/products/[id].astro:13-17 — identical const initials = product.name.split(\" \").map((w: string) => w[0]).slice(0, 2).join(\"\") re-implemented rather than imported/shared",
+      "src/pages/products/[id].astro:26 — {initials} rendered from the page's own copy, independent of ProductCard's copy, so the two can drift out of sync"
+    ]
+  },
+  {
+    "id": "u-03",
+    "file": "src/pages/contact.astro",
+    "line": 32,
+    "label": "contract",
+    "failure_mode": "The access_key hidden input holds the literal placeholder string \"YOUR_WEB3FORMS_ACCESS_KEY\" instead of a provisioned Web3Forms key; the API rejects every submission it receives with an invalid key, so the contact form silently fails to deliver any message as shipped.",
+    "evidence": [
+      "src/pages/contact.astro:28 — action=\"https://api.web3forms.com/submit\" posts the form directly to the third-party API",
+      "src/pages/contact.astro:32 — value=\"YOUR_WEB3FORMS_ACCESS_KEY\" is a placeholder, not a real access key",
+      "src/pages/contact.astro:74 — the submit button has no client-side handling of the API's rejection, so the failure is invisible to the visitor"
+    ]
+  },
+  {
+    "id": "u-04",
+    "file": "src/components/ProductCard.astro",
+    "line": 9,
+    "label": "duplication",
+    "failure_mode": "The name-to-initials computation (split/map/slice/join) is duplicated verbatim in ProductCard.astro and src/pages/products/[id].astro instead of being a shared helper; a future change to the initials rule applied to one copy will silently diverge from the other, producing inconsistent initials between the product list and product detail page.",
+    "evidence": [
+      "src/components/ProductCard.astro:9-13 — const initials = product.name.split(\" \").map((w) => w[0]).slice(0, 2).join(\"\")",
+      "src/pages/products/[id].astro:13-17 — identical split/map/slice/join block re-implemented independently",
+      "src/pages/products/[id].astro:26 — renders {initials} from the second, independently computed copy"
+    ]
+  }
+]
