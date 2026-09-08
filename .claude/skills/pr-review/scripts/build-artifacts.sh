@@ -524,7 +524,7 @@ fi
 CLASSIFICATION_CAP="${PR_REVIEW_CLASSIFICATION_CAP:-40}"
 : > "$OUT/classification-candidates.txt"
 if [ "$PACK_PRESENT" = 1 ] && [ "$STALE" = 0 ] && [ "$HAVE_PY3" = 1 ]; then
-  python3 model/parse_conventions.py "$PACK" classify "$OUT/patch.diff" \
+  python3 model/parse_conventions.py "$PACK" classify "$OUT/patch.diff" "$BE" "$FE" \
     | head -n "$CLASSIFICATION_CAP" > "$OUT/classification-candidates.txt"
 fi
 CLASSIFICATION_CANDIDATES=$(grep -c . "$OUT/classification-candidates.txt" 2>/dev/null || true)

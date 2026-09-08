@@ -34,7 +34,7 @@ usage: parse_conventions.py <pack-file> extract-section "<## Heading>"
   section (`## Promoted non-defects`, `## Dependencies`, ...) doesn't need
   its own hand-rolled awk scan in build-artifacts.sh.
 
-usage: parse_conventions.py <pack-file> classify <patch-diff-file>
+usage: parse_conventions.py <pack-file> classify <patch-diff-file> [be] [fe]
   Week 6 deterministic pre-pass: for every record whose `matcher` field is
   set, a plain literal substring (never a regex — no escaping/injection
   surface, matches model/FORMAT.md's own "no unsafe interpolation" doctrine),
@@ -45,6 +45,12 @@ usage: parse_conventions.py <pack-file> classify <patch-diff-file>
   code; a matcher hit is never itself a classification. A record with no
   `matcher` set never appears here regardless of how well it might apply —
   this mode only surfaces what the deterministic signal actually caught.
+  `be`/`fe` gate on `stack` exactly like `render` does above — a `stack: fe`
+  record's matcher never surfaces on a backend-only run. <pack-file> itself
+  is never a candidate target: a record's own `matcher` value, once added to
+  <pack-file>, is a literal substring of <pack-file>'s own diff, so without
+  this exclusion every pack edit that adds a `matcher` self-matches the
+  record it just introduced.
 """
 import re
 import sys
@@ -209,38 +215,52 @@ def validate_records(records, section_lines):
                 yield "citation", (rid, field, path, line or "", end_line or line or "")
 
 
-FILE_HEADER_RE = re.compile(r"^diff --git a/.+ b/(.+)$")
+# The `diff --git a/<path> b/<path>` header is ambiguous when a path itself
+# contains the literal substring " b/" (both paths are usually identical, so
+# the line becomes "...a/x b/y b/x b/y" with no unambiguous split point) — the
+# `+++ b/<path>`/`+++ /dev/null` line has no such collision, since it carries
+# exactly one path and nothing else can appear after "+++ " on that line.
+FILE_HEADER_RE = re.compile(r"^\+\+\+ (?:b/(.+)|/dev/null)$")
 
 
 def added_lines_by_file(diff_text):
     """Split a unified diff into {file: [added-line-text, ...]}, added lines
-    only (`+`, never `+++`) — same shape build-artifacts.sh's own added()
-    computes, just per-file instead of one concatenated stream, since a
-    matcher hit has to say *which* file it fired on."""
+    only (`+`, never the `+++ b/<path>` header itself) — same shape
+    build-artifacts.sh's own added() computes, just per-file instead of one
+    concatenated stream, since a matcher hit has to say *which* file it fired
+    on. A deleted file's `+++ /dev/null` sets `current` to None — a deletion
+    has no added lines to attribute regardless."""
     by_file = {}
     current = None
     for line in diff_text.splitlines():
         m = FILE_HEADER_RE.match(line)
         if m:
             current = m.group(1)
-            by_file.setdefault(current, [])
+            if current is not None:
+                by_file.setdefault(current, [])
             continue
         if current is None:
-            continue
-        if line.startswith("+++"):
             continue
         if line.startswith("+"):
             by_file[current].append(line[1:])
     return by_file
 
 
-def classify(records, diff_text):
+def classify(records, diff_text, pack_path=None, be="1", fe="1"):
     """Yields (file, id) for every record whose `matcher` literal substring
     appears in that file's own added lines. Order: diff file order, then
     record order within a file — deterministic, so a rerun on the same diff
-    reproduces the same candidate list byte-for-byte."""
+    reproduces the same candidate list byte-for-byte. `pack_path` is excluded
+    from `by_file` — the pack's own diff necessarily contains the literal
+    text of any `matcher` value it just introduced, which would otherwise
+    self-match every time. `be`/`fe` gate on `stack`, same rule as render()."""
     by_file = added_lines_by_file(diff_text)
-    matchers = [(r["id"], r["matcher"]) for r in records if r.get("matcher")]
+    if pack_path is not None:
+        by_file.pop(pack_path, None)
+    matchers = [
+        (r["id"], r["matcher"]) for r in records
+        if r.get("matcher") and not ((r.get("stack") == "be" and be != "1") or (r.get("stack") == "fe" and fe != "1"))
+    ]
     for f, lines in by_file.items():
         if not lines:
             continue
@@ -298,12 +318,14 @@ def main():
         return
 
     if mode == "classify":
-        if len(sys.argv) != 4:
+        if len(sys.argv) not in (4, 5, 6):
             sys.stderr.write(__doc__)
             sys.exit(2)
         with open(sys.argv[3], encoding="utf-8") as f:
             diff_text = f.read()
-        for f_path, rid in classify(records, diff_text):
+        be = sys.argv[4] if len(sys.argv) >= 5 else "1"
+        fe = sys.argv[5] if len(sys.argv) >= 6 else "1"
+        for f_path, rid in classify(records, diff_text, pack_path=pack_path, be=be, fe=fe):
             print(f"{f_path}\t{rid}")
         return
 
