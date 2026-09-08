@@ -60,3 +60,23 @@ came back N/A this week for exactly the reason a self-referential corpus
 predicts). Same two arms, same blind sheet, same verdict rule, unchanged.
 Whatever the combined 8-run number says, decide then — literally,
 without a second BETWEEN available.
+
+## Final decision, dated 2026-09-08 (after the BETWEEN extension)
+
+Extension run against a genuinely blind, non-self-referential corpus
+(Boskov sajt — full detail `eval/corpus-blind.md`,
+`eval/gate-1-extension-report.md`). Combined 8-run result: control 1.125
+accepted/run (81.8% acceptance), model 1.625 (100%). Re-derived 2x
+baseline against combined control is 2.25 — model's 1.625 still falls
+short, by a slightly wider margin than the original single-corpus miss.
+Neither of gate-0.md's thresholds cleanly fires with BETWEEN now spent:
+not a clean CONTINUE by the strict 2x reading, nowhere near STOP's own
+floor either — model has never underperformed control across all 8
+combined runs, and caught a real bug (a duplication its own generated
+pack predicted almost verbatim) that control missed.
+
+**CONTINUE.** Decided by the user, explicitly, on the "never worse,
+sometimes uniquely better" reading over the strict 2x-bar reading —
+both were live options, surfaced without a default in
+`eval/gate-1-extension-report.md`, and this is the one chosen. Phase 2
+(week 6: classify each changed unit) starts from here.
