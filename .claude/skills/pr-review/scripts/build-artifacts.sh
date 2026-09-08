@@ -14,6 +14,9 @@
 #                                  a wrong-but-plausible finding (see future-improvements/
 #                                  week-5-dirty-tree-stale-citation.md, Direction 2). Reused by SHA
 #                                  across repeated reruns of the same historical head, not recreated.
+#                                  A dirty working tree (uncommitted changes) gets the same worktree
+#                                  treatment automatically, pinned to plain HEAD — see Direction 1 in
+#                                  the same file.
 #           PR_REVIEW_LARGE_DIFF=<n>  changed-line threshold for the LARGE_DIFF warning (default 2500)
 #           PR_REVIEW_KEEP_DAYS=<n>   age in days before a stale pr-review.* run dir, or a stale
 #                                  PR_REVIEW_HEAD replay worktree, is pruned (default 7)
@@ -25,7 +28,7 @@
 # Prints run.env (key=value) followed by brief.txt. Exit codes:
 #   0 ok (EMPTY=1 in run.env when there is nothing to review)   2 not a git repo
 #   3 base does not resolve    4 no merge base (unrelated histories)    5 cannot create $OUT
-#   6 cannot create the PR_REVIEW_HEAD replay worktree
+#   6 cannot create the replay worktree (PR_REVIEW_HEAD, or a dirty tree)
 set -u
 BASE_ARG="${1:-dev}"
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "error: not inside a git repository" >&2; exit 2; }
@@ -245,17 +248,27 @@ if [ "$HEAD_REF" = HEAD ]; then
   git symbolic-ref -q HEAD >/dev/null || BASE_NOTE="${BASE_NOTE:+$BASE_NOTE; }HEAD is detached"
 fi
 
+# ---------- 1.3a dirty tree (moved ahead of READ_ROOT — it now decides READ_ROOT too) ----------
+DIRTY=0; git status --porcelain | grep -q . && DIRTY=1
+
 # ---------- 1.3b READ_ROOT — where spawned agents read source files from ----------
-# Only diverges from $ROOT for a PR_REVIEW_HEAD replay: patch.diff/manifest.txt
-# above are computed via `git diff`, which reads git objects and is correct for
-# any commit pair regardless of working-tree state. A verifier's own Read/Grep/
-# Glob calls are not — they see the live filesystem at $ROOT, which drifts from
-# a historical HEAD_SHA the moment anything has been renamed, moved or
-# restructured since (this repo's own core/harness split did exactly that to
-# two week-2 corpus entries — see future-improvements/
-# week-5-dirty-tree-stale-citation.md, Direction 2). Named by SHA and reused,
-# not recreated, so replaying the same historical head twice (the normal eval
-# case) costs one checkout, not one per run.
+# Diverges from $ROOT for a PR_REVIEW_HEAD replay *or* a dirty tree: patch.diff/
+# manifest.txt above are computed via `git diff`, which reads git objects and is
+# correct for any commit pair regardless of working-tree state. A verifier's own
+# Read/Grep/Glob calls are not — they see the live filesystem at $ROOT, which
+# drifts from the diffed commit two ways: (a) a historical HEAD_SHA the moment
+# anything has been renamed, moved or restructured since (this repo's own
+# core/harness split did exactly that to two week-2 corpus entries), and (b) a
+# dirty $ROOT, where uncommitted edits on disk are invisible to `git diff
+# BASE...HEAD` but visible to a live Read — a verifier can then cite the
+# uncommitted version of a line while reporting it as part of the reviewed diff,
+# or miss a defect the diff still shows because disk already fixed it (see
+# future-improvements/week-5-dirty-tree-stale-citation.md, Directions 1 and 2).
+# Both cases get the same fix: read via a detached worktree pinned to the exact
+# commit the diff is against, never the live tree. Named by SHA and reused, not
+# recreated, so replaying the same head twice (the normal eval case, and a
+# second dirty-tree run before any new commit) costs one checkout, not one per
+# run.
 KEEP_DAYS_WT="${PR_REVIEW_KEEP_DAYS:-7}"
 WT_PREFIX="pr-review-replay-$(basename "$ROOT")-"
 find "${TMPDIR:-/tmp}" -maxdepth 1 -type d -name "${WT_PREFIX}*" -mtime "+$KEEP_DAYS_WT" 2>/dev/null \
@@ -264,11 +277,11 @@ find "${TMPDIR:-/tmp}" -maxdepth 1 -type d -name "${WT_PREFIX}*" -mtime "+$KEEP_
       git worktree remove --force "$stale" 2>/dev/null || rm -rf "$stale"
     done
 git worktree prune 2>/dev/null || true
-if [ -n "${PR_REVIEW_HEAD:-}" ]; then
+if [ -n "${PR_REVIEW_HEAD:-}" ] || [ "$DIRTY" = 1 ]; then
   READ_ROOT="${TMPDIR:-/tmp}/${WT_PREFIX}${HEAD_SHA}"
   if [ ! -d "$READ_ROOT" ]; then
     git worktree add --detach "$READ_ROOT" "$HEAD_SHA" >/dev/null 2>&1 \
-      || { echo "error: cannot create PR_REVIEW_HEAD replay worktree at $READ_ROOT for $HEAD_SHA" >&2; exit 6; }
+      || { echo "error: cannot create replay worktree at $READ_ROOT for $HEAD_SHA" >&2; exit 6; }
   fi
 else
   READ_ROOT="$ROOT"
@@ -320,8 +333,7 @@ if [ "$CHANGED" -eq 0 ]; then
   else echo "Nothing to review: HEAD matches $BASE (after exclusions)." >&2; fi
 fi
 
-# ---------- 1.7 dirty tree ----------
-DIRTY=0; git status --porcelain | grep -q . && DIRTY=1
+# ---------- 1.7 dirty tree — computed in 1.3a, above, since READ_ROOT needs it ----------
 
 # ---------- 1.8 graph refresh ----------
 # No more precompute/paste here: pr-review-scout and the pr-verify-* agents hold
