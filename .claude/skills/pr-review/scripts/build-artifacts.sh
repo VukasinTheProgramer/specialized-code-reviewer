@@ -21,10 +21,11 @@
 #           PR_REVIEW_KEEP_DAYS=<n>   age in days before a stale pr-review.* run dir, or a stale
 #                                  PR_REVIEW_HEAD replay worktree, is pruned (default 7)
 #           PR_REVIEW_IMPACTED_CAP=<n>  max impacted-caller candidates to emit (default 24)
+#           PR_REVIEW_CLASSIFICATION_CAP=<n>  max classification candidates to emit (default 40)
 #
 # Writes into a fresh $OUT under .git/:  patch.diff  manifest.txt  brief.txt  wiring.txt
 #   probes-{access,data,answer,structure,all}.txt  known-non-defects.txt
-#   impacted-candidates.txt  run.env
+#   impacted-candidates.txt  classification-candidates.txt  run.env
 # Prints run.env (key=value) followed by brief.txt. Exit codes:
 #   0 ok (EMPTY=1 in run.env when there is nothing to review)   2 not a git repo
 #   3 base does not resolve    4 no merge base (unrelated histories)    5 cannot create $OUT
@@ -513,6 +514,22 @@ if [ "$PACK_PRESENT" = 1 ] && [ "$STALE" = 0 ]; then
   fi
 fi
 
+# ---------- classification-candidates.txt (week 6): the deterministic
+# pre-pass. Any record with a `matcher` (a plain literal substring) gets
+# tested against patch.diff's own added lines, per file — a hit is a cheap,
+# over-inclusive candidate, never a verdict; the scout still confirms
+# (MATCHES/DEVIATES) or rejects it. Same gate as probes-*.txt (no pack, or
+# stale, means no candidates — a safe degrade, not a crash), same cap
+# philosophy as impacted-candidates.txt above. ----------
+CLASSIFICATION_CAP="${PR_REVIEW_CLASSIFICATION_CAP:-40}"
+: > "$OUT/classification-candidates.txt"
+if [ "$PACK_PRESENT" = 1 ] && [ "$STALE" = 0 ] && [ "$HAVE_PY3" = 1 ]; then
+  python3 model/parse_conventions.py "$PACK" classify "$OUT/patch.diff" \
+    | head -n "$CLASSIFICATION_CAP" > "$OUT/classification-candidates.txt"
+fi
+CLASSIFICATION_CANDIDATES=$(grep -c . "$OUT/classification-candidates.txt" 2>/dev/null || true)
+CLASSIFICATION_CANDIDATES="${CLASSIFICATION_CANDIDATES:-0}"
+
 # ---------- scout gets every label's probes in one file — it has no slice
 # restriction (unlike the four verifiers), so it needs the union, not a split.
 # Built from the four files above, not re-parsed from the pack. Concatenated
@@ -581,6 +598,7 @@ fi
   echo "SCOPE=$SCOPE"; echo "BE=$BE"; echo "FE=$FE"; echo "GRAPH=$GRAPH"
   echo "CHANGED=$CHANGED"; echo "FILES=$FILES"; echo "EMPTY=$EMPTY"; echo "DIRTY=$DIRTY"; echo "LARGE_DIFF=$LARGE_DIFF"
   echo "IMPACTED_CANDIDATES=$IMPACTED_CANDIDATES"; echo "IMPACTED_TRUNCATED=$IMPACTED_TRUNCATED"
+  echo "CLASSIFICATION_CANDIDATES=$CLASSIFICATION_CANDIDATES"
   echo "PACK_PRESENT=$PACK_PRESENT"; echo "PACK_STALE=$STALE"; echo "PACK_INVALID=$PACK_INVALID"
   echo "LEDGER_PRESENT=$LEDGER_PRESENT"; echo "LEDGER_STALE=$LEDGER_STALE"; echo "BASE_NOTE=$BASE_NOTE"
   echo "BRIEF_DEGRADED=$BRIEF_DEGRADED"

@@ -2,3 +2,4 @@ graphify-out/
 .DS_Store
 todays-work/
 future-improvements/
+__pycache__/

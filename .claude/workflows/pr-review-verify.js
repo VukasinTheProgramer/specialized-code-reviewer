@@ -129,6 +129,7 @@ const {
   briefText, wiringFilesText,
   probesAccessText, probesDataText, probesAnswerText, probesStructureText,
   probesAllText, knownNonDefectsText, impactedCandidatesText,
+  classificationCandidatesText,
 } = args
 
 const patchPath = `${outDir}/patch.diff`
@@ -172,6 +173,16 @@ const impactedCandidates = impactedCandidatesText
   ? `\nimpacted candidates — unchanged files that reference something this diff\nchanged, one \`caller<TAB>changed-file\` per line, already capped and with the\ndiff's own files removed. A reference is not a call: confirm each one before\nkeeping it, and drop the rest. With graph on, your own edge lookups take\nprecedence over this list where the two disagree.\n\n${impactedCandidatesText}\n`
   : '\nNo impacted candidates this run — nothing unchanged references the changed files, or the diff touches only files with no referencable name.\n'
 
+// Week 6 deterministic pre-pass (model/parse_conventions.py's `classify`
+// mode, run by build-artifacts.sh): a convention record's `matcher` literal
+// hit against a file's own added lines. A hit is a candidate, never a
+// verdict — restrict `classification`/`matched_convention` to what this list
+// actually proposes per file; confirm (MATCHES/DEVIATES) or reject it back to
+// NEW, same "confirm or reject" contract as impacted candidates above.
+const classificationCandidates = classificationCandidatesText
+  ? `\nclassification candidates — a convention record's own \`matcher\` literal\nhit against that file's added lines, one \`file<TAB>id\` per line. A hit is a\ncandidate, never a verdict: for each file listed here, confirm MATCHES or\nDEVIATES against the actual code, or reject it back to NEW. A file with no\ncandidate here is NEW — do not propose a match this list didn't offer.\n\n${classificationCandidatesText}\n`
+  : '\nNo classification candidates this run — no record\'s matcher hit any changed file\'s added lines, or no record has a matcher set. Classify every unit NEW.\n'
+
 const scoutPrompt = `graph: ${graph}
 
 diff:      ${patchPath}
@@ -184,7 +195,7 @@ Every path in your reply must be relative to that root.
 ${briefText}
 ${graphSection}
 ${domainPackProbes}
-${knownNonDefects}${impactedCandidates}
+${knownNonDefects}${impactedCandidates}${classificationCandidates}
 Read the patch and the manifest, then emit context (every changed unit),
 optionally up to 12 ranked hypotheses, and optionally up to 12 impacted
 callers. See your own agent definition for the label table, the reading

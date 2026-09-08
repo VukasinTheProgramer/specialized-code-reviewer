@@ -33,6 +33,18 @@ usage: parse_conventions.py <pack-file> extract-section "<## Heading>"
   render/validate's own `## Label probes` extraction) — shared so a second
   section (`## Promoted non-defects`, `## Dependencies`, ...) doesn't need
   its own hand-rolled awk scan in build-artifacts.sh.
+
+usage: parse_conventions.py <pack-file> classify <patch-diff-file>
+  Week 6 deterministic pre-pass: for every record whose `matcher` field is
+  set, a plain literal substring (never a regex — no escaping/injection
+  surface, matches model/FORMAT.md's own "no unsafe interpolation" doctrine),
+  test it against that file's own added lines in <patch-diff-file>. A hit
+  prints `file<TAB>id`, one line per (file, record) match. This is a cheap,
+  deliberately over-inclusive candidate signal, not a verdict — the scout
+  confirms (MATCHES/DEVIATES) or rejects each candidate against the actual
+  code; a matcher hit is never itself a classification. A record with no
+  `matcher` set never appears here regardless of how well it might apply —
+  this mode only surfaces what the deterministic signal actually caught.
 """
 import re
 import sys
@@ -197,8 +209,49 @@ def validate_records(records, section_lines):
                 yield "citation", (rid, field, path, line or "", end_line or line or "")
 
 
+FILE_HEADER_RE = re.compile(r"^diff --git a/.+ b/(.+)$")
+
+
+def added_lines_by_file(diff_text):
+    """Split a unified diff into {file: [added-line-text, ...]}, added lines
+    only (`+`, never `+++`) — same shape build-artifacts.sh's own added()
+    computes, just per-file instead of one concatenated stream, since a
+    matcher hit has to say *which* file it fired on."""
+    by_file = {}
+    current = None
+    for line in diff_text.splitlines():
+        m = FILE_HEADER_RE.match(line)
+        if m:
+            current = m.group(1)
+            by_file.setdefault(current, [])
+            continue
+        if current is None:
+            continue
+        if line.startswith("+++"):
+            continue
+        if line.startswith("+"):
+            by_file[current].append(line[1:])
+    return by_file
+
+
+def classify(records, diff_text):
+    """Yields (file, id) for every record whose `matcher` literal substring
+    appears in that file's own added lines. Order: diff file order, then
+    record order within a file — deterministic, so a rerun on the same diff
+    reproduces the same candidate list byte-for-byte."""
+    by_file = added_lines_by_file(diff_text)
+    matchers = [(r["id"], r["matcher"]) for r in records if r.get("matcher")]
+    for f, lines in by_file.items():
+        if not lines:
+            continue
+        blob = "\n".join(lines)
+        for rid, matcher in matchers:
+            if matcher in blob:
+                yield f, rid
+
+
 def main():
-    if len(sys.argv) < 3 or sys.argv[2] not in ("render", "validate", "extract-section"):
+    if len(sys.argv) < 3 or sys.argv[2] not in ("render", "validate", "extract-section", "classify"):
         sys.stderr.write(__doc__)
         sys.exit(2)
     pack_path, mode = sys.argv[1], sys.argv[2]
@@ -242,6 +295,16 @@ def main():
             handles[slice_name].write(render_record(r))
         for h in handles.values():
             h.close()
+        return
+
+    if mode == "classify":
+        if len(sys.argv) != 4:
+            sys.stderr.write(__doc__)
+            sys.exit(2)
+        with open(sys.argv[3], encoding="utf-8") as f:
+            diff_text = f.read()
+        for f_path, rid in classify(records, diff_text):
+            print(f"{f_path}\t{rid}")
         return
 
     # mode == "validate"

@@ -90,7 +90,7 @@ Fields, and who needs each one:
 | `unsafe_when` | yes | What would make the same shape a real defect. Mirrors the ledger's two-halves dismissal rule (`eval/review-corrections.md`); without it a record silences the genuine version of its own pattern. |
 | `deviations` | no | Known non-conforming sites, already triaged. Empty is normal. |
 | `stack` | no | `be` / `fe` / unset. Feeds the existing stack gate — a frontend record never fires on a backend-only diff. |
-| `matcher` | no | Reserved for week 6's classifier. Not read by anything today — leave unset. |
+| `matcher` | no | Week 6's deterministic pre-pass candidate signal: a plain literal substring — never a regex, nothing to escape — tested against a changed file's own added lines. A hit proposes this record as a classification candidate for that file (`file<TAB>id` in `classification-candidates.txt`); the scout still confirms `MATCHES`/`DEVIATES` or rejects it, so a hit is a candidate, never a verdict. No `matcher`, or no hit — the record still exists for the scout's own `label` probes, it just never proposes itself as a candidate this way. Optional; leave unset when no cheap literal signals the pattern (most structural conventions won't have one). |
 
 An unknown field name is a typo, not a new field, and `id` must match the
 slug grammar (`label.short-name`, lowercase, `.`/`-` only) and be unique
