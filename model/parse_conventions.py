@@ -52,6 +52,7 @@ usage: parse_conventions.py <pack-file> classify <patch-diff-file> [be] [fe]
   this exclusion every pack edit that adds a `matcher` self-matches the
   record it just introduced.
 """
+import os
 import re
 import sys
 
@@ -66,6 +67,16 @@ LIST_FIELDS = {"witnesses", "deviations"}
 CITATION_FIELDS = ["exemplar", "witnesses", "deviations"]  # exemplar: scalar; other two: list
 REQUIRED_FIELDS = ["label", "statement", "exemplar", "witnesses", "guard", "unsafe_when"]
 KNOWN_FIELDS = set(REQUIRED_FIELDS) | {"deviations", "stack", "matcher"}
+
+
+def stack_allows(record, be, fe):
+    """A record with `stack: be` is dropped when `be` isn't "1", same for
+    `fe`; no `stack` field always passes. Shared by render() and classify()
+    so the gating rule lives once — the exact duplication this project's own
+    `duplication.shared-matching-logic-sourced-not-copied` record warns
+    against."""
+    stack = record.get("stack")
+    return not ((stack == "be" and be != "1") or (stack == "fe" and fe != "1"))
 ID_RE = re.compile(r"^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$")
 CITATION_RE = re.compile(r"^`?([A-Za-z0-9_./-]+)(?::(\d+)(?:-(\d+))?)?`?$")
 # Column-0 only — an indented continuation line never starts with a bare word
@@ -217,33 +228,69 @@ def validate_records(records, section_lines):
 
 # The `diff --git a/<path> b/<path>` header is ambiguous when a path itself
 # contains the literal substring " b/" (both paths are usually identical, so
-# the line becomes "...a/x b/y b/x b/y" with no unambiguous split point) — the
-# `+++ b/<path>`/`+++ /dev/null` line has no such collision, since it carries
-# exactly one path and nothing else can appear after "+++ " on that line.
+# the line becomes "...a/x b/y b/x b/y" with no unambiguous split point), so
+# it's used only as a state reset below, never to extract a path. The actual
+# path comes from `+++ b/<path>`/`+++ /dev/null`, but that text alone is not
+# a safe signal either — an *added* line whose own literal content is
+# "++ b/x" or "++ /dev/null" renders identically once diff prefixes it with
+# "+". What makes a real header line unambiguous is its position: it always
+# appears between a `diff --git` line and that file's first `@@` hunk marker,
+# never inside a hunk's own content — so header lines are only matched while
+# not yet inside a hunk.
+DIFF_START_RE = re.compile(r"^diff --git ")
+HUNK_START_RE = re.compile(r"^@@ ")
 FILE_HEADER_RE = re.compile(r"^\+\+\+ (?:b/(.+)|/dev/null)$")
 
 
-def added_lines_by_file(diff_text):
+def added_lines_by_file(diff_text, exclude=None):
     """Split a unified diff into {file: [added-line-text, ...]}, added lines
     only (`+`, never the `+++ b/<path>` header itself) — same shape
     build-artifacts.sh's own added() computes, just per-file instead of one
     concatenated stream, since a matcher hit has to say *which* file it fired
     on. A deleted file's `+++ /dev/null` sets `current` to None — a deletion
-    has no added lines to attribute regardless."""
+    has no added lines to attribute regardless. `exclude`, when given, is
+    never given a `by_file` entry at all — no wasted list-building for a file
+    whose lines the caller is only going to discard."""
     by_file = {}
     current = None
+    in_header = False  # between a `diff --git` line and that file's first `@@`
     for line in diff_text.splitlines():
-        m = FILE_HEADER_RE.match(line)
-        if m:
-            current = m.group(1)
-            if current is not None:
-                by_file.setdefault(current, [])
+        if DIFF_START_RE.match(line):
+            in_header = True
+            current = None
+            continue
+        if HUNK_START_RE.match(line):
+            in_header = False
+            continue
+        if in_header:
+            m = FILE_HEADER_RE.match(line)
+            if m:
+                current = m.group(1)
+                if current is not None and current != exclude:
+                    by_file.setdefault(current, [])
+                elif current == exclude:
+                    current = None
             continue
         if current is None:
             continue
         if line.startswith("+"):
             by_file[current].append(line[1:])
     return by_file
+
+
+def _normalize_pack_path(pack_path):
+    """`+++ b/<path>` is always repo-root-relative (git's own convention);
+    `pack_path` (argv, or PR_REVIEW_PACK per build-artifacts.sh) is
+    documented the same way but not enforced — an absolute path or a
+    `./`-prefixed one would otherwise miss the diff's own key by plain
+    string equality, silently reintroducing the self-match bug this
+    exclusion exists to close."""
+    if os.path.isabs(pack_path):
+        try:
+            pack_path = os.path.relpath(pack_path)
+        except ValueError:
+            pass
+    return pack_path[2:] if pack_path.startswith("./") else pack_path
 
 
 def classify(records, diff_text, pack_path=None, be="1", fe="1"):
@@ -254,13 +301,9 @@ def classify(records, diff_text, pack_path=None, be="1", fe="1"):
     from `by_file` — the pack's own diff necessarily contains the literal
     text of any `matcher` value it just introduced, which would otherwise
     self-match every time. `be`/`fe` gate on `stack`, same rule as render()."""
-    by_file = added_lines_by_file(diff_text)
-    if pack_path is not None:
-        by_file.pop(pack_path, None)
-    matchers = [
-        (r["id"], r["matcher"]) for r in records
-        if r.get("matcher") and not ((r.get("stack") == "be" and be != "1") or (r.get("stack") == "fe" and fe != "1"))
-    ]
+    exclude = _normalize_pack_path(pack_path) if pack_path is not None else None
+    by_file = added_lines_by_file(diff_text, exclude=exclude)
+    matchers = [(r["id"], r["matcher"]) for r in records if r.get("matcher") and stack_allows(r, be, fe)]
     for f, lines in by_file.items():
         if not lines:
             continue
@@ -299,8 +342,7 @@ def main():
         handles = {}
         for r in records:
             rid = r.get("id", "(no id)")
-            stack = r.get("stack")
-            if (stack == "be" and be != "1") or (stack == "fe" and fe != "1"):
+            if not stack_allows(r, be, fe):
                 continue
             label = r.get("label", "")
             slice_name = LABEL_TO_SLICE.get(label)
