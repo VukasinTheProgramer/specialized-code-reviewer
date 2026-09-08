@@ -25,8 +25,10 @@ const SCOUT_SCHEMA = {
           kind: { type: 'string' },
           related: { type: 'array', items: { type: 'string' } },
           graph_coverage: { type: 'string', enum: ['hit', 'none'] },
+          classification: { type: 'string', enum: ['NEW', 'MATCHES', 'DEVIATES'] },
+          matched_convention: { type: ['string', 'null'] },
         },
-        required: ['file', 'kind', 'related', 'graph_coverage'],
+        required: ['file', 'kind', 'related', 'graph_coverage', 'classification'],
       },
     },
     hypotheses: {
@@ -226,6 +228,13 @@ for (const k of Object.keys(bucket)) bucket[k].sort((a, b) => a.rank - b.rank)
 // is a fact a report reader wants and a spawn proving a trace has no use for
 // — no pr-verify-* definition reads it. scoutGraphCoverage below is tallied
 // from scout.context itself, not from this text, so the telemetry survives.
+// `classification`/`matched_convention` are stripped the same way, for the
+// same reason, plus a week-6 one: no verifier definition reads them yet —
+// routing a DEVIATES unit's matched record into its verifier's prompt is
+// week 7's job (inline the specific record instead of the whole slice's
+// probes). scoutClassification below tallies them from scout.context itself,
+// same pattern as scoutGraphCoverage, so this week's number survives into
+// findings.json without wiring anything into a verifier prompt early.
 const contextText = JSON.stringify((scout.context || []).map(({ file, kind, related }) => ({ file, kind, related })))
 const impactedText = JSON.stringify((scout.impacted || []).map(({ file, calls }) => ({ file, calls })))
 
@@ -402,6 +411,11 @@ const scoutGraphCoverage = (scout.context || []).reduce((acc, c) => {
   return acc
 }, { hit: 0, none: 0 })
 
+const scoutClassification = (scout.context || []).reduce((acc, c) => {
+  if (c.classification) acc[c.classification] = (acc[c.classification] || 0) + 1
+  return acc
+}, { NEW: 0, MATCHES: 0, DEVIATES: 0 })
+
 const hypothesesRaised = (scout.hypotheses || []).length
 // What actually reached a verifier — raised minus what the router dropped
 // (wrong label, wrong stack). Precision reads as proven ÷ routed, never
@@ -426,6 +440,7 @@ return {
   degraded,
   slice_mismatch: sliceMismatch,
   scout_graph_coverage: scoutGraphCoverage,
+  scout_classification: scoutClassification,
   hypotheses: { raised: hypothesesRaised, routed: hypothesesRouted, proven, also_swept: alsoSwept, unread, dropped: droppedHypotheses },
   dropped_malformed: droppedMalformed,
   dropped_unreachable: droppedUnreachable,

@@ -24,7 +24,10 @@ Close every report with what ran:
 Slices run: Access, Data, Answer, Structure — 4 spawns, scope backend.
 Hypotheses: 12 raised, 11 routed, 3 proven, 1 also found by sweep, 0 left unread.
 Scout context: graph off this run (no graphify-out/graph.json yet) — related resolved via grep.
+Scout classification: 6 MATCHES, 1 DEVIATES, 4 NEW.
 ```
+
+`scout_classification` (week 6): every changed unit's own judgment against this repo's convention records — `MATCHES` (follows one), `DEVIATES` (corresponds to one but the guard doesn't hold — a real defect candidate, not a separate check from the numbered findings above), `NEW` (no record covers it). Not yet acted on beyond this one line — no verifier is told which record a `DEVIATES` unit matched (that's week 7); this is visibility only.
 
 `routed` (hypotheses that actually reached a verifier, after the router dropped any outside every slice or outside this repo's stack) is the denominator for precision — read it as `proven ÷ routed`, never `proven ÷ raised`, since `raised` still counts hypotheses no verifier ever saw.
 
@@ -72,6 +75,7 @@ No findings.
 Verified clean: Access, Data, Answer, Structure — 4 spawns, scope frontend.
 Hypotheses: 7 raised, 7 routed, 0 proven, 0 also found by sweep, 0 left unread.
 Scout context: graph off this run (no graphify-out/graph.json yet) — related resolved via grep.
+Scout classification: 3 MATCHES, 0 DEVIATES, 2 NEW.
 ```
 
 A failed spawn is always named separately, never silent:

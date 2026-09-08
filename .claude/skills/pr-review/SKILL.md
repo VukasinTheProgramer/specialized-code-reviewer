@@ -100,7 +100,7 @@ Inside, the script runs one `pr-review-scout` (Grep/Glob plus live graphify MCP 
 
 Two things the return value can carry that must reach the report:
 
-- `scout_failed: true` → the scout crashed and every verifier ran unassisted. Say so ("scout stage failed — findings below are sweep-only") instead of rendering the normal `Scout context:` line.
+- `scout_failed: true` → the scout crashed and every verifier ran unassisted. Say so ("scout stage failed — findings below are sweep-only") instead of rendering the normal `Scout context:`/`Scout classification:` lines — an empty `context` array means `scout_classification` is `{NEW:0, MATCHES:0, DEVIATES:0}` too, which reads as "nothing to classify," not as a real zero.
 - `failed`, `degraded`, `slice_mismatch` → slices or labels that were **not reliably reviewed**. Named separately, never folded into "clean" (§5.6).
 
 ## Step 4 — Orientation brief

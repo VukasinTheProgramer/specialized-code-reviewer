@@ -19,7 +19,7 @@ One spawn, `subagent_type: "pr-review-scout"`. Has Grep/Glob plus live graphify 
  "context": [
    {"file": ".claude/skills/run-mutmut/scripts/run_mutmut.py", "kind": "other",
     "related": [".claude/skills/shared-test-skills/target_discovery.py"],
-    "graph_coverage": "none"}
+    "graph_coverage": "none", "classification": "NEW", "matched_convention": null}
  ],
  "hypotheses": [
    {"file": ".claude/skills/run-mutmut/scripts/run_mutmut.py", "label": "logic",
@@ -29,7 +29,9 @@ One spawn, `subagent_type: "pr-review-scout"`. Has Grep/Glob plus live graphify 
  "impacted": []}
 ```
 
-**`context`** covers every changed code unit — file, `kind`, `related`, `graph_coverage`. Broadcast unchanged to all four verifiers. **`hypotheses`** may be empty, capped at **12**, ranked by suspicion — no confirmed line, no evidence, no verdict, just a guess to test first. `related` carries the paths a verifier's trace will most likely need, resolved once instead of re-discovered four times; a verifier that needs one more file `related` didn't name can now go find it itself with its own Grep/Glob, narrowly, rather than being stopped cold.
+**`context`** covers every changed code unit — file, `kind`, `related`, `graph_coverage`, `classification`, `matched_convention`. Broadcast unchanged to all four verifiers. **`hypotheses`** may be empty, capped at **12**, ranked by suspicion — no confirmed line, no evidence, no verdict, just a guess to test first. `related` carries the paths a verifier's trace will most likely need, resolved once instead of re-discovered four times; a verifier that needs one more file `related` didn't name can now go find it itself with its own Grep/Glob, narrowly, rather than being stopped cold.
+
+**`classification`/`matched_convention` (week 6) are `NEW`/`MATCHES`/`DEVIATES` plus a matched record `id` (`null` on `NEW`), the scout's own judgment against the domain pack's convention records — no deterministic pre-pass yet (that's week 6's own next task) and no routing into a verifier's prompt yet (week 7's job: inline the matched record for a `DEVIATES` unit instead of the whole slice's probes). This week, both fields are stripped from `contextText` the same way `graph_coverage` already was — no `pr-verify-*` definition reads them — and tallied instead into the top-level `scout_classification` object, same pattern as `scoutGraphCoverage` below, so the number is visible in `findings.json`/the report's closing lines without being acted on early.
 
 **`impacted`** may be empty and is capped at **12** — it names unchanged files that call into something this diff changed, `{file, calls, graph_coverage}`. **It is populated on both graph paths.** Two sources feed it, and neither costs an extra call:
 
