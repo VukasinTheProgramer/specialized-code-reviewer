@@ -47,6 +47,14 @@ Anything missing or vague: **drop it.** No severity ladder, no uncertain tier, n
 
 **"Nothing calls this yet" is not a reason to drop what you can otherwise prove.** A service method with no router wired to it yet, a function exported but not yet imported — reachability isn't part of this bar. Judge the code against what it does when called, not against whether this diff happens to call it. See `pr-review-scout.md`'s defect definition.
 
+## Governed units (week 7)
+
+Your prompt's `governed units in this diff` block, when present, names files a domain-pack record already covers — the scout and a deterministic matcher agreed which record, the workflow inlined it for you (`file`, the record's `id`, its `correct` citation, its `guard`, its `unsafe when`). **This is an addition to job 1's ground, not a replacement for it.** The probes above still cover every label across the whole diff; a governed unit is one specific file where you also have a comparison target instead of having to grep for one.
+
+**Absence of the guard is not the finding.** A governed unit becomes a finding only when you can state all three: the record's guard is absent here; its `unsafe when` condition is satisfied by this code, specifically; and the usual triggering input and wrong outcome, with an evidence trace. Two out of three is a silent drop, same as every other candidate that doesn't clear the bar — the five-field bar above does not move for a governed unit, the record only makes it easier to meet, never lower. A file that merely lacks the pattern the record describes is not suspicious by default; most files have no reason to carry it at all. Report it only when the code actually does the specific unsafe thing `unsafe when` names.
+
+When a governed finding clears the bar, add one field to its JSON: `"deviates_from": "<record id>"`. Optional — every other finding, governed unit or not, omits it. It plays no part in what makes a finding real; it only tells the coordinator which record to cite when rendering the report.
+
 ## How to verify in this codebase
 
 **Domain pack first.** The `domain pack` block in your prompt already carries this repo's own cited files, lines and functions for `logic`, `validation`, `control-flow`, `state`, `contract` — the workflow inlines your slice's `## Label probes` rows there itself, so there is no need to open `model/pr-review-domain.md`. Use it before the fallback guidance below; it's what closes an evidence trace. An empty block means no pack, or a stale one, this run — the fallback below is generic and has no citation to confirm against; a finding built on it alone is weaker evidence and still has to clear the same five-field bar.
@@ -113,6 +121,8 @@ Then, always, the machine-readable block — same findings, nothing added or omi
 ```json
 {"slice": ["logic", "validation", "control-flow", "state", "contract"], "hypotheses_received": 0, "hypotheses_unread": 0, "findings": [{"file": "...", "line": 61, "label": "logic", "source": "sweep", "failure_mode": "...", "evidence": ["...", "..."]}], "dropped_unreachable": 0}
 ```
+
+A finding proven against a governed unit adds one field, `"deviates_from": "<record id>"` — every other finding omits it entirely, never `null`.
 
 `hypotheses_received` is how many you were handed; `hypotheses_unread` is how many the budget left you no room to test (0 unless you stopped job 2 early). `source` is `"hypothesis"` when the finding started as one you were given, and `"sweep"` when you found it yourself in job 1 — and it stays `"sweep"` when you found it independently and only later saw it on the list, because you did find it. `dropped_unreachable` is a count only, always present, 0 unless job 1 or job 2 killed a candidate solely because even a targeted grep/glob search could not locate the file that would have closed it.
 

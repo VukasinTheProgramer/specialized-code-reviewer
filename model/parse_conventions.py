@@ -53,6 +53,18 @@ usage: parse_conventions.py <pack-file> match <patch-diff-file> <repo-root> [be]
   means no single signal can nominate alone (max single weight is 2) — this
   is deliberate, not an artifact of the numbers picked: "either signal may
   veto; only agreement may assert."
+
+usage: parse_conventions.py <pack-file> records-json [be] [fe]
+  Week 7: one JSON array on stdout, one object per stack-allowed record —
+  `{"id", "label", "exemplar", "guard", "unsafe_when", "stack"}` — the fields
+  a verifier's "governed units" block needs to render (model/FORMAT.md §3),
+  citations left backtick-wrapped as authored (the render() prose form
+  strips them; this is consumed by code, not printed to a human). `be`/`fe`
+  gate on `stack` exactly like `render`/`match` do above. This is the only
+  place a record's `exemplar`/`guard`/`unsafe_when` reach a verifier
+  directly by id — `render()`'s probes-*.txt stays label-indexed prose for
+  job 1; this is the per-file, per-id lookup week 7's routing needs for
+  job 2's governed units.
   Prints one line per changed file with added lines, ranked highest-first,
   capped at 3 candidates: `file<TAB>id:score<TAB>id:score...`, or
   `file<TAB>(none)` when nothing reached the threshold. This is a cheap,
@@ -67,6 +79,7 @@ usage: parse_conventions.py <pack-file> match <patch-diff-file> <repo-root> [be]
   contains the literal guard text of any record it just introduced or
   edited, which would otherwise self-match via the tokens signal every time.
 """
+import json
 import os
 import re
 import sys
@@ -174,6 +187,27 @@ def render_record(r):
     if r.get("unsafe_when"):
         lines.append(f"  unsafe when:  {r['unsafe_when']}")
     return "\n".join(lines) + "\n"
+
+
+def records_json(records, be="1", fe="1"):
+    """One dict per stack-allowed record — id/label/exemplar/guard/
+    unsafe_when. `exemplar` has its wrapping backticks stripped, same as
+    render_record()'s own citation display (it's a bare path:line, not a
+    code span); `guard`/`unsafe_when` keep any inline backticks they
+    author with, same as probes-*.txt's existing prose does."""
+    out = []
+    for r in records:
+        if not stack_allows(r, be, fe):
+            continue
+        out.append({
+            "id": r.get("id", ""),
+            "label": r.get("label", ""),
+            "exemplar": strip_ticks(r.get("exemplar", "")),
+            "guard": r.get("guard", ""),
+            "unsafe_when": r.get("unsafe_when", ""),
+            "stack": r.get("stack"),
+        })
+    return out
 
 
 def validate_records(records, section_lines):
@@ -541,7 +575,7 @@ def match(records, diff_text, repo_root, pack_path=None, be="1", fe="1"):
 
 
 def main():
-    if len(sys.argv) < 3 or sys.argv[2] not in ("render", "validate", "extract-section", "match"):
+    if len(sys.argv) < 3 or sys.argv[2] not in ("render", "validate", "extract-section", "match", "records-json"):
         sys.stderr.write(__doc__)
         sys.exit(2)
     pack_path, mode = sys.argv[1], sys.argv[2]
@@ -601,6 +635,15 @@ def main():
             else:
                 cols = "(none)"
             print(f"{f_path}\t{cols}")
+        return
+
+    if mode == "records-json":
+        if len(sys.argv) not in (3, 4, 5):
+            sys.stderr.write(__doc__)
+            sys.exit(2)
+        be = sys.argv[3] if len(sys.argv) >= 4 else "1"
+        fe = sys.argv[4] if len(sys.argv) >= 5 else "1"
+        print(json.dumps(records_json(records, be=be, fe=fe)))
         return
 
     # mode == "validate"

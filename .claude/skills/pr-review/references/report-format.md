@@ -27,7 +27,7 @@ Scout context: graph off this run (no graphify-out/graph.json yet) — related r
 Scout classification: 7 governed (6 strong, 1 weak), 4 new.
 ```
 
-`scout_classification`/`scout_match_strength` (week 6): every changed unit's own answer to *which record governs this code* — never *does it follow that record*, which is week 7's job. `governed` (a record applies, `strong` when the matcher and the scout agreed, `weak` when the scout named a record the matcher missed), `new` (no record applies, or the two signals disagreed). Not yet acted on beyond this one line — no verifier is told which record a `governed` unit matched (that's week 7); this is visibility only.
+`scout_classification`/`scout_match_strength` (week 6): every changed unit's own answer to *which record governs this code* — never *does it follow that record*, which is a verifier's job (week 7). `governed` (a record applies, `strong` when the matcher and the scout agreed, `weak` when the scout named a record the matcher missed), `new` (no record applies, or the two signals disagreed). A `governed`/`strong` unit's record is routed to its verifier (week 7) — a `weak` one is not; see a finding's own `deviates_from` for whether that comparison actually produced anything.
 
 `routed` (hypotheses that actually reached a verifier, after the router dropped any outside every slice or outside this repo's stack) is the denominator for precision — read it as `proven ÷ routed`, never `proven ÷ raised`, since `raised` still counts hypotheses no verifier ever saw.
 

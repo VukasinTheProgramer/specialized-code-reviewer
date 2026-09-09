@@ -28,7 +28,7 @@
 #
 # Writes into a fresh $OUT under .git/:  patch.diff  manifest.txt  brief.txt  wiring.txt
 #   probes-{access,data,answer,structure,all}.txt  known-non-defects.txt
-#   impacted-candidates.txt  candidates.txt  run.env
+#   impacted-candidates.txt  candidates.txt  records.json  run.env
 # Prints run.env (key=value) followed by brief.txt. Exit codes:
 #   0 ok (EMPTY=1 in run.env when there is nothing to review)   2 not a git repo
 #   3 base does not resolve    4 no merge base (unrelated histories)    5 cannot create $OUT
@@ -510,11 +510,18 @@ HAVE_PY3=0
 command -v python3 >/dev/null 2>&1 && HAVE_PY3=1
 
 for f in access data answer structure; do : > "$OUT/probes-$f.txt"; done
+echo '[]' > "$OUT/records.json"
 if [ "$PACK_PRESENT" = 1 ] && [ "$STALE" = 0 ]; then
   if [ "$HAVE_PY3" = 1 ]; then
     python3 model/parse_conventions.py "$PACK" render "$OUT" "$BE" "$FE"
+    # ---------- records.json (week 7): one {id, label, exemplar, guard,
+    # unsafe_when, stack} per stack-allowed record, keyed by id — what the
+    # workflow script looks up to render a "governed units" block for a
+    # governed·strong file, since probes-*.txt is label-indexed prose, not
+    # a per-record lookup. ----------
+    python3 model/parse_conventions.py "$PACK" records-json "$BE" "$FE" > "$OUT/records.json"
   else
-    echo "warning: python3 not found — Label probes records not rendered, probes-*.txt left empty" >&2
+    echo "warning: python3 not found — Label probes records not rendered, probes-*.txt/records.json left empty" >&2
   fi
 fi
 

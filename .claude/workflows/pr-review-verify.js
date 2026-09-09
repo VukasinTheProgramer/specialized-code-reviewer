@@ -89,6 +89,12 @@ const VERIFIER_SCHEMA = {
           // structured-output call (coarser than the old per-finding drop
           // this schema is meant to tighten, not worsen).
           evidence: { type: 'array', items: { type: 'string' }, minItems: 2 },
+          // Week 7: which convention record this finding deviates from —
+          // optional, present only for a finding proven against a governed
+          // unit (core/doctrine.md's "Governed units" section). Never part
+          // of the dedupe key below: two findings at the same file, line
+          // and label are the same finding whether or not one cites a record.
+          deviates_from: { type: 'string' },
         },
         required: ['file', 'line', 'label', 'failure_mode', 'evidence'],
       },
@@ -130,7 +136,7 @@ const {
   briefText, wiringFilesText,
   probesAccessText, probesDataText, probesAnswerText, probesStructureText,
   probesAllText, knownNonDefectsText, impactedCandidatesText,
-  candidatesText,
+  candidatesText, recordsText,
 } = args
 
 const patchPath = `${outDir}/patch.diff`
@@ -242,17 +248,72 @@ for (const k of Object.keys(bucket)) bucket[k].sort((a, b) => a.rank - b.rank)
 // — no pr-verify-* definition reads it. scoutGraphCoverage below is tallied
 // from scout.context itself, not from this text, so the telemetry survives.
 // `classification`/`matched_convention`/`match_strength` are stripped the
-// same way, for the same reason, plus a week-6 one: no verifier definition
-// reads them yet — routing a governed unit's matched record into its
-// verifier's prompt is week 7's job (inline the specific record instead of
-// the whole slice's probes). scoutClassification/scoutMatchStrength below
-// tally them from scout.context itself, same pattern as scoutGraphCoverage,
-// so this week's numbers survive into findings.json without wiring anything
-// into a verifier prompt early.
+// same way — no verifier reads a bare classification string, it reads the
+// actual record (below) once routed to it.
 const contextText = JSON.stringify((scout.context || []).map(({ file, kind, related }) => ({ file, kind, related })))
 const impactedText = JSON.stringify((scout.impacted || []).map(({ file, calls }) => ({ file, calls })))
 
-function verifierPrompt(hyps, probesText) {
+// Week 7: route a governed·strong unit's own record to exactly the verifier
+// that owns its label — reusing labelToSlice (built above from the same
+// SLICES table hypotheses route through), not a second table to drift from
+// it. `weak` is routed nowhere this week (todays-work/week7/monday.md's own
+// decision, strong only — a weak match is the scout asserting alone, the
+// case with the least evidence, and widening is week 8's call to make on
+// real precision numbers, not a guess made here).
+let recordsById = {}
+try {
+  for (const r of JSON.parse(recordsText || '[]')) recordsById[r.id] = r
+} catch {
+  recordsById = {}
+}
+
+function stackAllowsRecord(record) {
+  // Same rule as model/parse_conventions.py's stack_allows() and the
+  // hypothesis STACK_GATE above — a record's own `stack` is a veto, not a
+  // score, and this is the one place in this script that has to reproduce
+  // that rule for a record instead of a label (a record's stack can differ
+  // from its label's — `logic` itself isn't stack-restricted, one of its
+  // records still can be).
+  if (record.stack === 'be') return flags.be
+  if (record.stack === 'fe') return flags.fe
+  return true
+}
+
+function governedBlock(file, record) {
+  // record.id is already the full `label.short-name` slug (model/FORMAT.md
+  // §3's own id grammar) — not "label" + "." + "id" again.
+  return `${file}\n  governed by ${record.id}\n  correct      ${record.exemplar}\n  guard        ${record.guard}\n  unsafe when  ${record.unsafe_when}`
+}
+
+const GOVERNED_BAR = `A governed unit becomes a finding only when you can state all three: the
+record's guard is absent here; its unsafe when condition is satisfied by
+this code, specifically; and the usual triggering input and wrong outcome,
+with an evidence trace. Two out of three is a silent drop, same as always
+— this does not lower the five-field bar, the record only makes it easier
+to meet. Absence of the guard is not the finding.`
+
+const governedBySlice = { Access: [], Data: [], Answer: [], Structure: [] }
+let droppedGoverned = 0
+for (const c of scout.context || []) {
+  if (c.classification !== 'governed' || c.match_strength !== 'strong' || !c.matched_convention) continue
+  const record = recordsById[c.matched_convention]
+  const sliceName = record && labelToSlice[record.label]
+  if (!record || !sliceName || !stackAllowsRecord(record)) {
+    droppedGoverned++
+    continue
+  }
+  governedBySlice[sliceName].push(governedBlock(c.file, record))
+}
+if (droppedGoverned > 0) log(`${droppedGoverned} governed unit(s) dropped before reaching a verifier — matched record not found in this run's pack, label outside every slice, or outside this repo's stack scope`)
+
+const governedText = {}
+for (const s of SLICES) {
+  governedText[s.name] = governedBySlice[s.name].length
+    ? `\ngoverned units in this diff — a domain-pack record already matched to these\nfiles by the scout and a deterministic matcher (strong match only). This is\nadditional ground, not a replacement for your labels' probes above.\n\n${GOVERNED_BAR}\n\n${governedBySlice[s.name].join('\n\n')}\n`
+    : ''
+}
+
+function verifierPrompt(hyps, probesText, governed) {
   const hypText = hyps.length
     ? hyps.map((h, i) => `  ${i + 1}. ${h.file} — ${h.label} — ${h.one_line}   rank ${h.rank}\n     related: ${(h.related || []).join(', ') || '(none)'}`).join('\n')
     : '(none — job 1 is the whole job)'
@@ -279,7 +340,7 @@ changed — this diff's own lines don't cover them, so check whether the
 change broke one of them under whichever of your own labels the breakage
 would show up as; empty is normal, not a gap):
 ${impactedText}
-${probes}
+${probes}${governed || ''}
 diff:      ${patchPath}
 manifest:  ${manifestPath}
 
@@ -297,7 +358,7 @@ ${wiring}`
 phase('Verify')
 const verified = await parallel(
   SLICES.map((s) => () =>
-    agent(verifierPrompt(bucket[s.name], PROBES_TEXT[s.name]), {
+    agent(verifierPrompt(bucket[s.name], PROBES_TEXT[s.name], governedText[s.name]), {
       agentType: s.agentType,
       schema: VERIFIER_SCHEMA,
       phase: 'Verify',
@@ -418,6 +479,9 @@ const findings = deduped.map((r, i) => ({
   source: r.source || null,
   failure_mode: r.failure_mode,
   evidence: r.evidence || [],
+  // Optional, omitted entirely rather than null — matches core/doctrine.md's
+  // own "every other finding omits it entirely, never null" instruction.
+  ...(r.deviates_from ? { deviates_from: r.deviates_from } : {}),
 }))
 
 const scoutGraphCoverage = (scout.context || []).reduce((acc, c) => {
