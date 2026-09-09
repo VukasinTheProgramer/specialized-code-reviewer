@@ -448,22 +448,21 @@ def symbol_shape(name):
 
 
 def record_symbol_shape(record, repo_root):
-    """The shape shared by the exemplar's own symbol and every witness's own
-    symbol — None when they don't agree, or when a citation's symbol can't
-    be resolved. Requires every citation to resolve so the shape isn't
-    guessed off a single site."""
-    shapes = []
-    for path, line in citation_paths(record):
-        name = extract_symbol_at(repo_root, path, line)
-        if not name:
-            return None
-        shapes.append(symbol_shape(name))
-    if not shapes or any(not s for s in shapes):
+    """The shape of the function enclosing the exemplar's own cited line —
+    the exemplar alone, per model/FORMAT.md §3c ('shares a leading name-
+    shape with the function enclosing the exemplar's own cited line').
+    None when the exemplar has no line, or its symbol can't be resolved."""
+    exemplar = record.get("exemplar")
+    if not exemplar:
         return None
-    first = shapes[0]
-    if not all(s == first for s in shapes):
+    m = CITATION_RE.match(exemplar.strip())
+    if not m:
         return None
-    return first
+    path, line = m.group(1), m.group(2)
+    if not line:
+        return None
+    name = extract_symbol_at(repo_root, path, int(line))
+    return symbol_shape(name) if name else None
 
 
 def symbol_signal(record, changed_file_added_lines, repo_root, record_shape_cache):
@@ -516,20 +515,21 @@ def score_record_for_file(record, changed_file, lines, blob, repo_root, symbol_c
 
 def match(records, diff_text, repo_root, pack_path=None, be="1", fe="1"):
     """Yields (file, [(id, score), ...]) — ranked highest-first, capped at
-    MATCH_CAP — for every changed file with added lines, scored against
-    every record this run's stack owns. Order: diff file order, deterministic
-    within a file by (score desc, id asc) — a rerun on the same diff and the
-    same tree reproduces the same candidate list byte-for-byte. `pack_path`
-    is excluded from `by_file` for the same reason it always has been: the
-    pack's own diff contains the literal guard text of any record it just
-    introduced or edited."""
+    MATCH_CAP — one entry per changed file, scored against every record this
+    run's stack owns, even a file with no added lines at all (a pure
+    deletion, or a rename with no content change): the directory and
+    filename signals depend only on the file's own path, not its added
+    lines, so such a file can still score. Order: diff file order,
+    deterministic within a file by (score desc, id asc) — a rerun on the
+    same diff and the same tree reproduces the same candidate list
+    byte-for-byte. `pack_path` is excluded from `by_file` for the same
+    reason it always has been: the pack's own diff contains the literal
+    guard text of any record it just introduced or edited."""
     exclude = _normalize_pack_path(pack_path) if pack_path is not None else None
     by_file = added_lines_by_file(diff_text, exclude=exclude)
     candidates = [r for r in records if stack_allows(r, be, fe)]
     symbol_cache, token_cache = {}, {}
     for f, lines in by_file.items():
-        if not lines:
-            continue
         blob = "\n".join(lines)
         scored = []
         for r in candidates:

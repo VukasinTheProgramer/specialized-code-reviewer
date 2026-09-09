@@ -21,7 +21,8 @@
 #           PR_REVIEW_KEEP_DAYS=<n>   age in days before a stale pr-review.* run dir, or a stale
 #                                  PR_REVIEW_HEAD replay worktree, is pruned (default 7)
 #           PR_REVIEW_IMPACTED_CAP=<n>  max impacted-caller candidates to emit (default 24)
-#           PR_REVIEW_MATCH_CAP=<n>  max convention-match candidates to emit per file (default 40)
+#           PR_REVIEW_MATCH_CAP=<n>  max changed-file lines to emit in candidates.txt (default 40; the
+#                                  per-file candidate cap is a fixed 3, not this knob)
 #           PR_REVIEW_UNIFIED=<n>  diff context width for both patch.diff and code.diff (default 15;
 #                                  future-improvements/week-6-diff-context-width.md's A/B knob)
 #
@@ -527,6 +528,10 @@ fi
 # READ_ROOT, not ROOT — the symbol signal reads the exemplar's file, and on
 # a PR_REVIEW_HEAD replay or a dirty tree that must be the tree the diff was
 # computed against, same reasoning as every other READ_ROOT use here. ----------
+# MATCH_CAP below limits total lines in candidates.txt, i.e. how many
+# changed files get a line at all on a very wide diff — it does NOT limit
+# candidates within one file, which is a fixed cap of 3 inside
+# parse_conventions.py's own match() (model/FORMAT.md §3c).
 MATCH_CAP="${PR_REVIEW_MATCH_CAP:-40}"
 : > "$OUT/candidates.txt"
 if [ "$PACK_PRESENT" = 1 ] && [ "$STALE" = 0 ] && [ "$HAVE_PY3" = 1 ]; then
