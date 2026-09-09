@@ -90,7 +90,6 @@ Fields, and who needs each one:
 | `unsafe_when` | yes | What would make the same shape a real defect. Mirrors the ledger's two-halves dismissal rule (`eval/review-corrections.md`); without it a record silences the genuine version of its own pattern. |
 | `deviations` | no | Known non-conforming sites, already triaged. Empty is normal. |
 | `stack` | no | `be` / `fe` / unset. Feeds the existing stack gate — a frontend record never fires on a backend-only diff. |
-| `matcher` | no | Week 6's deterministic pre-pass candidate signal: a plain literal substring — never a regex, nothing to escape — tested against a changed file's own added lines. A hit proposes this record as a classification candidate for that file (`file<TAB>id` in `classification-candidates.txt`); the scout still confirms `MATCHES`/`DEVIATES` or rejects it, so a hit is a candidate, never a verdict. No `matcher`, or no hit — the record still exists for the scout's own `label` probes, it just never proposes itself as a candidate this way. Optional; leave unset when no cheap literal signals the pattern (most structural conventions won't have one). |
 
 An unknown field name is a typo, not a new field, and `id` must match the
 slug grammar (`label.short-name`, lowercase, `.`/`-` only) and be unique
@@ -100,6 +99,36 @@ must resolve: the file exists, and a `:line` (or `:line-line2`) is within
 the file's actual line count — the same bounds check `build-artifacts.sh`
 already runs for staleness, applied here at authoring time instead of
 diff-review time.
+
+## §3c — The matcher: which record governs a changed file
+
+Week 6's deterministic pre-pass (`model/parse_conventions.py`'s `match`
+mode, run before the scout ever sees the diff). No author-set field — every
+signal is derived structurally from a record's own `exemplar`, `witnesses`
+and `guard`, which is the real reason §3 requires at least two witnesses:
+one citation gives you a file, three give you a pattern.
+
+| Signal | How it's computed | Weight |
+|---|---|---|
+| `directory` | The changed file shares a directory with the exemplar or a witness | 2 |
+| `filename` | Every exemplar/witness basename shares a common trailing name-shape word with the changed file's basename (`*_repository.py`, `*_service_impl.py`) | 2 |
+| `symbol` | A changed file's added function/method shares a leading name-shape with the function enclosing the exemplar's own cited line (`get_by_*`, `create_*`) | 1 |
+| `tokens` | A distinctive identifier-shaped word from the record's `guard` text appears literally in the changed file's added lines | 1 |
+| `stack` | The record's `stack` against the run's `BE`/`FE` — **a veto, not a score** | veto |
+
+A record becomes a candidate at **score ≥ 3** — no single signal (max
+weight 2) can nominate on its own. Rank by score, cap at 3 per changed
+file, written to `$OUT/candidates.txt` (`file<TAB>id:score<TAB>...`, or
+`file<TAB>(none)`).
+
+**Either signal may veto; only agreement may assert.** The scout confirms
+or rejects every candidate against the actual code — a high score is a
+proposal, never a verdict. When the matcher proposes nothing but the scout
+still names a record it recognizes, that's allowed (`governed · weak`) but
+only when the scout states in one line why; when the matcher and the scout
+disagree on which record applies, or the matcher's literal hit doesn't
+correspond to what the code actually does, the unit is `new` — a wrong
+`governed` is the expensive failure this asymmetry exists to prevent.
 
 ## §4 — Label probes: closed label list
 

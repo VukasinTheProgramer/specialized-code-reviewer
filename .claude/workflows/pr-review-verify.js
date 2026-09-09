@@ -25,10 +25,11 @@ const SCOUT_SCHEMA = {
           kind: { type: 'string' },
           related: { type: 'array', items: { type: 'string' } },
           graph_coverage: { type: 'string', enum: ['hit', 'none'] },
-          classification: { type: 'string', enum: ['NEW', 'MATCHES', 'DEVIATES'] },
+          classification: { type: 'string', enum: ['governed', 'new'] },
           matched_convention: { type: ['string', 'null'] },
+          match_strength: { type: ['string', 'null'], enum: ['strong', 'weak', null] },
         },
-        required: ['file', 'kind', 'related', 'graph_coverage', 'classification'],
+        required: ['file', 'kind', 'related', 'graph_coverage', 'classification', 'matched_convention', 'match_strength'],
       },
     },
     hypotheses: {
@@ -129,7 +130,7 @@ const {
   briefText, wiringFilesText,
   probesAccessText, probesDataText, probesAnswerText, probesStructureText,
   probesAllText, knownNonDefectsText, impactedCandidatesText,
-  classificationCandidatesText,
+  candidatesText,
 } = args
 
 const patchPath = `${outDir}/patch.diff`
@@ -173,15 +174,16 @@ const impactedCandidates = impactedCandidatesText
   ? `\nimpacted candidates — unchanged files that reference something this diff\nchanged, one \`caller<TAB>changed-file\` per line, already capped and with the\ndiff's own files removed. A reference is not a call: confirm each one before\nkeeping it, and drop the rest. With graph on, your own edge lookups take\nprecedence over this list where the two disagree.\n\n${impactedCandidatesText}\n`
   : '\nNo impacted candidates this run — nothing unchanged references the changed files, or the diff touches only files with no referencable name.\n'
 
-// Week 6 deterministic pre-pass (model/parse_conventions.py's `classify`
-// mode, run by build-artifacts.sh): a convention record's `matcher` literal
-// hit against a file's own added lines. A hit is a candidate, never a
-// verdict — restrict `classification`/`matched_convention` to what this list
-// actually proposes per file; confirm (MATCHES/DEVIATES) or reject it back to
-// NEW, same "confirm or reject" contract as impacted candidates above.
-const classificationCandidates = classificationCandidatesText
-  ? `\nclassification candidates — a convention record's own \`matcher\` literal\nhit against that file's added lines, one \`file<TAB>id\` per line. A hit is a\ncandidate, never a verdict: for each file listed here, confirm MATCHES or\nDEVIATES against the actual code, or reject it back to NEW. A file with no\ncandidate here is NEW — do not propose a match this list didn't offer.\n\n${classificationCandidatesText}\n`
-  : '\nNo classification candidates this run — no record\'s matcher hit any changed file\'s added lines, or no record has a matcher set. Classify every unit NEW.\n'
+// Week 6 deterministic pre-pass (model/parse_conventions.py's `match` mode,
+// run by build-artifacts.sh): every record scored per changed file on four
+// structural signals derived from its own exemplar/witnesses/guard
+// (model/FORMAT.md §3c) — no author-set field. A score >= 3 is a candidate,
+// never a verdict — restrict `classification`/`matched_convention` to what
+// this list actually proposes (plus the narrow scout-names-a-miss
+// exception below); confirm (`governed`) or reject it back to `new`.
+const candidates = candidatesText
+  ? `\ncandidates — the deterministic matcher's own ranked proposals, one\n\`file<TAB>id:score<TAB>id:score...\` line per changed file (\`(none)\` when\nnothing reached the threshold). This is a structural signal that never\nopened the file: a directory/filename/symbol/token match, not a semantic\none. Either signal may veto; only agreement may assert:\n- a listed candidate you confirm against the actual code -> governed, strong\n- a listed candidate the code doesn't actually support -> reject it, new\n- nothing listed here, but you recognize a record that genuinely governs this file -> governed, weak, and you must say in one line why\n- more than one candidate still looks applicable after checking, or you can't cleanly settle on one -> new (disagreement, not a guess)\n- nothing listed and you see no record either -> new\n\n${candidatesText}\n`
+  : '\nNo candidates this run — no record scored >= 3 against any changed file, or no domain pack. Everything is `new` unless you can confidently name and justify a record yourself (governed, weak).\n'
 
 const scoutPrompt = `graph: ${graph}
 
@@ -195,7 +197,7 @@ Every path in your reply must be relative to that root.
 ${briefText}
 ${graphSection}
 ${domainPackProbes}
-${knownNonDefects}${impactedCandidates}${classificationCandidates}
+${knownNonDefects}${impactedCandidates}${candidates}
 Read the patch and the manifest, then emit context (every changed unit),
 optionally up to 12 ranked hypotheses, and optionally up to 12 impacted
 callers. See your own agent definition for the label table, the reading
@@ -239,13 +241,14 @@ for (const k of Object.keys(bucket)) bucket[k].sort((a, b) => a.rank - b.rank)
 // is a fact a report reader wants and a spawn proving a trace has no use for
 // — no pr-verify-* definition reads it. scoutGraphCoverage below is tallied
 // from scout.context itself, not from this text, so the telemetry survives.
-// `classification`/`matched_convention` are stripped the same way, for the
-// same reason, plus a week-6 one: no verifier definition reads them yet —
-// routing a DEVIATES unit's matched record into its verifier's prompt is
-// week 7's job (inline the specific record instead of the whole slice's
-// probes). scoutClassification below tallies them from scout.context itself,
-// same pattern as scoutGraphCoverage, so this week's number survives into
-// findings.json without wiring anything into a verifier prompt early.
+// `classification`/`matched_convention`/`match_strength` are stripped the
+// same way, for the same reason, plus a week-6 one: no verifier definition
+// reads them yet — routing a governed unit's matched record into its
+// verifier's prompt is week 7's job (inline the specific record instead of
+// the whole slice's probes). scoutClassification/scoutMatchStrength below
+// tally them from scout.context itself, same pattern as scoutGraphCoverage,
+// so this week's numbers survive into findings.json without wiring anything
+// into a verifier prompt early.
 const contextText = JSON.stringify((scout.context || []).map(({ file, kind, related }) => ({ file, kind, related })))
 const impactedText = JSON.stringify((scout.impacted || []).map(({ file, calls }) => ({ file, calls })))
 
@@ -425,7 +428,12 @@ const scoutGraphCoverage = (scout.context || []).reduce((acc, c) => {
 const scoutClassification = (scout.context || []).reduce((acc, c) => {
   if (c.classification) acc[c.classification] = (acc[c.classification] || 0) + 1
   return acc
-}, { NEW: 0, MATCHES: 0, DEVIATES: 0 })
+}, { governed: 0, new: 0 })
+
+const scoutMatchStrength = (scout.context || []).reduce((acc, c) => {
+  if (c.match_strength) acc[c.match_strength] = (acc[c.match_strength] || 0) + 1
+  return acc
+}, { strong: 0, weak: 0 })
 
 const hypothesesRaised = (scout.hypotheses || []).length
 // What actually reached a verifier — raised minus what the router dropped
@@ -452,6 +460,7 @@ return {
   slice_mismatch: sliceMismatch,
   scout_graph_coverage: scoutGraphCoverage,
   scout_classification: scoutClassification,
+  scout_match_strength: scoutMatchStrength,
   hypotheses: { raised: hypothesesRaised, routed: hypothesesRouted, proven, also_swept: alsoSwept, unread, dropped: droppedHypotheses },
   dropped_malformed: droppedMalformed,
   dropped_unreachable: droppedUnreachable,

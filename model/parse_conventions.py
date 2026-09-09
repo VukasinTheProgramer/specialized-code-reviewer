@@ -34,23 +34,38 @@ usage: parse_conventions.py <pack-file> extract-section "<## Heading>"
   section (`## Promoted non-defects`, `## Dependencies`, ...) doesn't need
   its own hand-rolled awk scan in build-artifacts.sh.
 
-usage: parse_conventions.py <pack-file> classify <patch-diff-file> [be] [fe]
-  Week 6 deterministic pre-pass: for every record whose `matcher` field is
-  set, a plain literal substring (never a regex — no escaping/injection
-  surface, matches model/FORMAT.md's own "no unsafe interpolation" doctrine),
-  test it against that file's own added lines in <patch-diff-file>. A hit
-  prints `file<TAB>id`, one line per (file, record) match. This is a cheap,
+usage: parse_conventions.py <pack-file> match <patch-diff-file> <repo-root> [be] [fe]
+  Week 6 deterministic pre-pass (model/FORMAT.md's matcher-spec section):
+  for every changed file with added lines, score every record on four
+  structural signals derived from its own `exemplar`/`witnesses`/`guard` —
+  no author-set field, nothing to keep in sync by hand:
+    directory (2)  changed file shares a directory with the exemplar or a witness
+    filename  (2)  changed file's basename shares a common suffix with every
+                   exemplar/witness basename (e.g. every citation ends `_repository.py`)
+    symbol    (1)  a changed file's added function/method definition's name
+                   shares a leading-word shape with the exemplar's own symbol
+                   (the function enclosing its cited line)
+    tokens    (1)  a distinctive word from the record's `guard` field appears
+                   literally in the changed file's added lines
+  `stack` is a veto, not a score, same rule as render()/classify() before it
+  — a record whose stack the run doesn't own never becomes a candidate no
+  matter how it scores. A record reaches candidacy at score >= 3, which
+  means no single signal can nominate alone (max single weight is 2) — this
+  is deliberate, not an artifact of the numbers picked: "either signal may
+  veto; only agreement may assert."
+  Prints one line per changed file with added lines, ranked highest-first,
+  capped at 3 candidates: `file<TAB>id:score<TAB>id:score...`, or
+  `file<TAB>(none)` when nothing reached the threshold. This is a cheap,
   deliberately over-inclusive candidate signal, not a verdict — the scout
-  confirms (MATCHES/DEVIATES) or rejects each candidate against the actual
-  code; a matcher hit is never itself a classification. A record with no
-  `matcher` set never appears here regardless of how well it might apply —
-  this mode only surfaces what the deterministic signal actually caught.
-  `be`/`fe` gate on `stack` exactly like `render` does above — a `stack: fe`
-  record's matcher never surfaces on a backend-only run. <pack-file> itself
-  is never a candidate target: a record's own `matcher` value, once added to
-  <pack-file>, is a literal substring of <pack-file>'s own diff, so without
-  this exclusion every pack edit that adds a `matcher` self-matches the
-  record it just introduced.
+  confirms or rejects each candidate against the actual code; a high score
+  is never itself a classification.
+  `<repo-root>` is read-only, used to resolve the exemplar's/witnesses'
+  cited files for the symbol signal — pass READ_ROOT (build-artifacts.sh),
+  never the live tree on a historical replay or a dirty run.
+  `be`/`fe` gate on `stack` exactly like `render` does above.
+  <pack-file> itself is never a candidate target: its own diff necessarily
+  contains the literal guard text of any record it just introduced or
+  edited, which would otherwise self-match via the tokens signal every time.
 """
 import os
 import re
@@ -66,7 +81,7 @@ CLOSED_LABELS = set(LABEL_TO_SLICE)
 LIST_FIELDS = {"witnesses", "deviations"}
 CITATION_FIELDS = ["exemplar", "witnesses", "deviations"]  # exemplar: scalar; other two: list
 REQUIRED_FIELDS = ["label", "statement", "exemplar", "witnesses", "guard", "unsafe_when"]
-KNOWN_FIELDS = set(REQUIRED_FIELDS) | {"deviations", "stack", "matcher"}
+KNOWN_FIELDS = set(REQUIRED_FIELDS) | {"deviations", "stack"}
 
 
 def stack_allows(record, be, fe):
@@ -293,28 +308,240 @@ def _normalize_pack_path(pack_path):
     return pack_path[2:] if pack_path.startswith("./") else pack_path
 
 
-def classify(records, diff_text, pack_path=None, be="1", fe="1"):
-    """Yields (file, id) for every record whose `matcher` literal substring
-    appears in that file's own added lines. Order: diff file order, then
-    record order within a file — deterministic, so a rerun on the same diff
-    reproduces the same candidate list byte-for-byte. `pack_path` is excluded
-    from `by_file` — the pack's own diff necessarily contains the literal
-    text of any `matcher` value it just introduced, which would otherwise
-    self-match every time. `be`/`fe` gate on `stack`, same rule as render()."""
+DIR_WEIGHT, FILENAME_WEIGHT, SYMBOL_WEIGHT, TOKEN_WEIGHT = 2, 2, 1, 1
+MATCH_THRESHOLD = 3
+MATCH_CAP = 3
+
+# A handful of common English/SQL words that would otherwise fire the tokens
+# signal on nearly every guard sentence — kept short and generic (never
+# repo-specific) since a record's own distinctive vocabulary is the signal,
+# not its connective prose.
+TOKEN_STOPWORDS = {
+    "the", "this", "that", "with", "from", "into", "where", "join", "clause",
+    "never", "always", "using", "value", "field", "lines", "check", "checks",
+    "holds", "held", "absent", "guard", "record", "convention", "when",
+    "then", "same", "each", "every", "under", "over", "before", "after",
+    "would", "should", "could", "does", "doesn", "does not", "against",
+    "another", "other", "which", "what", "have", "has", "not", "and", "for",
+}
+
+
+def citation_paths(record):
+    """(path, line_int_or_none) for every exemplar/witness citation on a
+    record — malformed citations (already flagged by validate()) are simply
+    skipped, this mode degrades rather than crashes on a bad pack."""
+    out = []
+    raw_exemplar = record.get("exemplar")
+    values = ([raw_exemplar] if raw_exemplar else []) + (record.get("witnesses") or [])
+    for v in values:
+        m = CITATION_RE.match(v.strip())
+        if not m:
+            continue
+        path, line = m.group(1), m.group(2)
+        out.append((path, int(line) if line else None))
+    return out
+
+
+def _dirname(path):
+    return os.path.dirname(path)
+
+
+def dir_signal(record, changed_file):
+    """The directory signal: the changed file shares a directory with the
+    exemplar or any witness. Exact directory match only — 'shares a
+    directory family' per the spec's own example (`Backend/app/crud/`), not
+    a fuzzy path-prefix guess."""
+    changed_dir = _dirname(changed_file)
+    return any(_dirname(p) == changed_dir for p, _ in citation_paths(record))
+
+
+NAME_SPLIT_RE = re.compile(r"[A-Za-z][a-z0-9]*|[0-9]+")
+
+
+def _basename_no_ext(path):
+    base = os.path.basename(path)
+    stem, _, _ext = base.rpartition(".")
+    return stem if stem else base
+
+
+def common_suffix_words(names):
+    """The longest common trailing run of name-shape words shared by every
+    citation's basename (stem, no extension) — e.g. ['payment_repository',
+    'account_repository', 'statement_repository'] all end in the word
+    'repository'. Splits on underscore/camelCase boundaries so
+    `card_repository` and `CardRepository` agree. Returns [] when there's
+    no shared tail, or too few citations to call anything a pattern."""
+    if len(names) < 2:
+        return []
+    split = [tuple(w.lower() for w in NAME_SPLIT_RE.findall(n)) for n in names]
+    shortest = min(len(s) for s in split)
+    if shortest == 0:
+        return []
+    tail = []
+    for i in range(1, shortest + 1):
+        words_at_i = {s[-i] for s in split}
+        if len(words_at_i) == 1:
+            tail.append(next(iter(words_at_i)))
+        else:
+            break
+    return list(reversed(tail))
+
+
+def filename_signal(record, changed_file):
+    """The filename signal: every exemplar/witness basename ends in the same
+    run of name-shape words, and the changed file's basename ends in that
+    same run too. A single shared word already carries real signal here
+    (`repository`, `service_impl`) since it was independently derived from
+    >= 3 real citations (week 3's own >= 2 witnesses rule), not guessed."""
+    names = [_basename_no_ext(p) for p, _ in citation_paths(record)]
+    tail = common_suffix_words(names)
+    if not tail:
+        return False
+    changed_words = tuple(w.lower() for w in NAME_SPLIT_RE.findall(_basename_no_ext(changed_file)))
+    return len(changed_words) >= len(tail) and changed_words[-len(tail):] == tuple(tail)
+
+
+DEF_RES = [
+    re.compile(r"^\s*(?:async\s+)?def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\("),        # python
+    re.compile(r"^\s*(?:export\s+)?(?:async\s+)?function\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*\("),  # js/ts function
+    re.compile(r"^\s*(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*(?:async\s*)?\("),  # js/ts arrow
+    re.compile(r"^\s*(?:public|private|protected)?\s*(?:async\s+)?([A-Za-z_$][A-Za-z0-9_$]*)\s*\([^)]*\)\s*\{"),  # method
+]
+
+
+def _find_symbol_name(line):
+    for rx in DEF_RES:
+        m = rx.match(line)
+        if m:
+            return m.group(1)
+    return None
+
+
+def extract_symbol_at(repo_root, path, line):
+    """The name of the function/method enclosing a cited line — scans
+    upward from `line` to the file's start and returns the first definition
+    matched, which is the innermost enclosing one for ordinary (non-nested-
+    past-one-level) code. Returns None on any read/parse failure — a
+    missing or unreadable exemplar file degrades this one signal, it
+    doesn't abort the run."""
+    if line is None:
+        return None
+    try:
+        with open(os.path.join(repo_root, path), encoding="utf-8", errors="ignore") as f:
+            file_lines = f.read().splitlines()
+    except OSError:
+        return None
+    start = min(line, len(file_lines)) - 1
+    for i in range(start, -1, -1):
+        name = _find_symbol_name(file_lines[i])
+        if name:
+            return name
+    return None
+
+
+def symbol_shape(name):
+    """The leading 1-2 name-shape words of a symbol, e.g. `get_by_public_id`
+    -> ('get', 'by'), `createOrder` -> ('create',). This is the '`get_by_*`'
+    prefix the spec names, not the whole identifier."""
+    words = NAME_SPLIT_RE.findall(name)
+    return tuple(w.lower() for w in words[:2])
+
+
+def record_symbol_shape(record, repo_root):
+    """The shape shared by the exemplar's own symbol and every witness's own
+    symbol — None when they don't agree, or when a citation's symbol can't
+    be resolved. Requires every citation to resolve so the shape isn't
+    guessed off a single site."""
+    shapes = []
+    for path, line in citation_paths(record):
+        name = extract_symbol_at(repo_root, path, line)
+        if not name:
+            return None
+        shapes.append(symbol_shape(name))
+    if not shapes or any(not s for s in shapes):
+        return None
+    first = shapes[0]
+    if not all(s == first for s in shapes):
+        return None
+    return first
+
+
+def symbol_signal(record, changed_file_added_lines, repo_root, record_shape_cache):
+    if record["id"] not in record_shape_cache:
+        record_shape_cache[record["id"]] = record_symbol_shape(record, repo_root)
+    shape = record_shape_cache[record["id"]]
+    if not shape:
+        return False
+    for line in changed_file_added_lines:
+        name = _find_symbol_name(line)
+        if name and symbol_shape(name) == shape:
+            return True
+    return False
+
+
+GUARD_TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+
+def distinctive_tokens(guard_text):
+    """Identifier-shaped words pulled out of a record's `guard` prose: an
+    underscore already marks a word as code rather than English
+    (`user_id`, `invalidateQueries`), and a plain word only counts once it's
+    long enough and off the small stopword list above. No author input —
+    this is the whole point of retiring the hand-authored `matcher` field."""
+    out = []
+    for tok in GUARD_TOKEN_RE.findall(guard_text or ""):
+        if "_" in tok or (len(tok) >= 6 and tok.lower() not in TOKEN_STOPWORDS):
+            out.append(tok)
+    return out
+
+
+def token_signal(record, blob, token_cache):
+    if record["id"] not in token_cache:
+        token_cache[record["id"]] = distinctive_tokens(record.get("guard", ""))
+    return any(tok in blob for tok in token_cache[record["id"]])
+
+
+def score_record_for_file(record, changed_file, lines, blob, repo_root, symbol_cache, token_cache):
+    score = 0
+    if dir_signal(record, changed_file):
+        score += DIR_WEIGHT
+    if filename_signal(record, changed_file):
+        score += FILENAME_WEIGHT
+    if symbol_signal(record, lines, repo_root, symbol_cache):
+        score += SYMBOL_WEIGHT
+    if token_signal(record, blob, token_cache):
+        score += TOKEN_WEIGHT
+    return score
+
+
+def match(records, diff_text, repo_root, pack_path=None, be="1", fe="1"):
+    """Yields (file, [(id, score), ...]) — ranked highest-first, capped at
+    MATCH_CAP — for every changed file with added lines, scored against
+    every record this run's stack owns. Order: diff file order, deterministic
+    within a file by (score desc, id asc) — a rerun on the same diff and the
+    same tree reproduces the same candidate list byte-for-byte. `pack_path`
+    is excluded from `by_file` for the same reason it always has been: the
+    pack's own diff contains the literal guard text of any record it just
+    introduced or edited."""
     exclude = _normalize_pack_path(pack_path) if pack_path is not None else None
     by_file = added_lines_by_file(diff_text, exclude=exclude)
-    matchers = [(r["id"], r["matcher"]) for r in records if r.get("matcher") and stack_allows(r, be, fe)]
+    candidates = [r for r in records if stack_allows(r, be, fe)]
+    symbol_cache, token_cache = {}, {}
     for f, lines in by_file.items():
         if not lines:
             continue
         blob = "\n".join(lines)
-        for rid, matcher in matchers:
-            if matcher in blob:
-                yield f, rid
+        scored = []
+        for r in candidates:
+            score = score_record_for_file(r, f, lines, blob, repo_root, symbol_cache, token_cache)
+            if score >= MATCH_THRESHOLD:
+                scored.append((r["id"], score))
+        scored.sort(key=lambda t: (-t[1], t[0]))
+        yield f, scored[:MATCH_CAP]
 
 
 def main():
-    if len(sys.argv) < 3 or sys.argv[2] not in ("render", "validate", "extract-section", "classify"):
+    if len(sys.argv) < 3 or sys.argv[2] not in ("render", "validate", "extract-section", "match"):
         sys.stderr.write(__doc__)
         sys.exit(2)
     pack_path, mode = sys.argv[1], sys.argv[2]
@@ -359,16 +586,21 @@ def main():
             h.close()
         return
 
-    if mode == "classify":
-        if len(sys.argv) not in (4, 5, 6):
+    if mode == "match":
+        if len(sys.argv) not in (5, 6, 7):
             sys.stderr.write(__doc__)
             sys.exit(2)
         with open(sys.argv[3], encoding="utf-8") as f:
             diff_text = f.read()
-        be = sys.argv[4] if len(sys.argv) >= 5 else "1"
-        fe = sys.argv[5] if len(sys.argv) >= 6 else "1"
-        for f_path, rid in classify(records, diff_text, pack_path=pack_path, be=be, fe=fe):
-            print(f"{f_path}\t{rid}")
+        repo_root = sys.argv[4]
+        be = sys.argv[5] if len(sys.argv) >= 6 else "1"
+        fe = sys.argv[6] if len(sys.argv) >= 7 else "1"
+        for f_path, scored in match(records, diff_text, repo_root, pack_path=pack_path, be=be, fe=fe):
+            if scored:
+                cols = "\t".join(f"{rid}:{score}" for rid, score in scored)
+            else:
+                cols = "(none)"
+            print(f"{f_path}\t{cols}")
         return
 
     # mode == "validate"

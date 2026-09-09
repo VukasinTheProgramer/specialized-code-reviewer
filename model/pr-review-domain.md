@@ -90,7 +90,6 @@ unsafe_when: a new artifact is written straight to its final shared path
              with no mktemp and no rename, so the next reader can observe
              a partial write, or two concurrent runs can interleave
              writes to the same path
-matcher:     mktemp
 
 ### layering.core-holds-doctrine
 
@@ -133,7 +132,6 @@ unsafe_when: ROOT is used bare right after the assignment with nothing
              can be reviewed via a dropped-in pack
 deviations:  `harness/build-agents.sh:12`
              `harness/check-generated.sh:8`
-matcher:     git rev-parse --show-toplevel
 
 ### duplication.agents-generated-not-hand-duplicated
 
@@ -179,7 +177,6 @@ unsafe_when: a new line-count check is added with `wc -l` instead of one
              end with a trailing newline and only misfires on the ones
              that don't, which is exactly the kind of bug that survives
              testing on a few files and then fires on a real one
-matcher:     wc -l
 
 ### contract.script-header-documents-interface
 
