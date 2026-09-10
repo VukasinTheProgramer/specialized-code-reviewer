@@ -61,7 +61,7 @@ statement:   A claim asserted by an upstream step, a spawn's structured
              output or a shell loop that should have written files, is
              independently re-verified downstream before being trusted,
              never accepted on the upstream step's own say-so.
-exemplar:    `.claude/skills/pr-review/SKILL.md:130`
+exemplar:    `.claude/skills/pr-review/SKILL.md:135`
 witnesses:   `harness/build-agents.sh:44-45`
              `tests/run-integration.sh:48-53`
 guard:       the re-derivation reads ground truth via a fresh command every
@@ -80,9 +80,9 @@ statement:   A file another process, or the next run, may observe is never
              written to a private location first and made visible by a
              single atomic rename, or the location itself is created
              atomically unique so no two runs can collide on it.
-exemplar:    `.claude/skills/pr-review/SKILL.md:139`
+exemplar:    `.claude/skills/pr-review/SKILL.md:144`
 witnesses:   `.claude/skills/pr-review/scripts/add-regression-case.sh:56-62`
-             `.claude/skills/pr-review/scripts/build-artifacts.sh:260`
+             `.claude/skills/pr-review/scripts/build-artifacts.sh:315`
 guard:       the atomic primitive itself, `mv` for a same-filesystem
              rename or `mktemp`/`mktemp -d` for unique-path creation, is
              what is load-bearing, never a test-then-write pattern
@@ -119,7 +119,7 @@ statement:   A script that resolves its own operating root via
              target guards the resolution failing, printing an error and
              exiting a documented code, rather than continuing with an
              empty or wrong root.
-exemplar:    `.claude/skills/pr-review/scripts/build-artifacts.sh:22`
+exemplar:    `.claude/skills/pr-review/scripts/build-artifacts.sh:38`
 witnesses:   `.claude/skills/pr-review/scripts/add-regression-case.sh:21`
              `.claude/skills/pr-review/scripts/run-regression-set.sh:20`
 guard:       the `|| { echo ...; exit 2; }` right after the assignment,
@@ -167,8 +167,8 @@ statement:   A file's line count, wherever it feeds a bounds check or a
              trailing final newline, which silently misjudges a citation
              on that file's real last line as past EOF.
 exemplar:    `model/validate-pack.sh:91`
-witnesses:   `.claude/skills/pr-review/scripts/build-artifacts.sh:154-156`
-             `.claude/skills/pr-review/SKILL.md:130`
+witnesses:   `.claude/skills/pr-review/scripts/build-artifacts.sh:169-172`
+             `.claude/skills/pr-review/SKILL.md:135`
 guard:       the specific awk idiom, `END{print NR}` or the
              `FNR==1 && NR>1` file-boundary batch, is what is load-bearing,
              never a plain `wc -l` on the target file
@@ -208,7 +208,7 @@ statement:   A script that must report every problem it finds in one
              point handles its own failure explicitly instead of relying
              on errexit.
 exemplar:    `model/validate-pack.sh:8`
-witnesses:   `.claude/skills/pr-review/scripts/build-artifacts.sh:20`
+witnesses:   `.claude/skills/pr-review/scripts/build-artifacts.sh:36`
              `.claude/skills/pr-review/scripts/add-regression-case.sh:20`
              `.claude/skills/pr-review/scripts/run-regression-set.sh:19`
 guard:       every risky command in these scripts is explicitly checked
@@ -251,7 +251,7 @@ statement:   Matching or parsing logic used by two independent scripts to
              own message wording.
 exemplar:    `model/pack-heading-check.sh:1`
 witnesses:   `model/validate-pack.sh:29`
-             `.claude/skills/pr-review/scripts/build-artifacts.sh:42`
+             `.claude/skills/pr-review/scripts/build-artifacts.sh:58`
 guard:       neither caller reimplements the matching loop itself, only
              its own reporting of the result — `missing_pack_headings()`'s
              actual matching logic exists exactly once on disk
