@@ -1,0 +1,19 @@
+{
+  "base": "270c8e9",
+  "head": "288794459f32624d4d060da5c09e543b59b7065f",
+  "scope": "neither",
+  "graph": "off",
+  "scout_failed": false,
+  "slices_run": ["Access", "Data", "Answer", "Structure"],
+  "verified_clean": ["Access", "Data", "Answer", "Structure"],
+  "failed": [],
+  "degraded": [],
+  "slice_mismatch": [],
+  "scout_graph_coverage": {"hit": 0, "none": 3},
+  "scout_classification": {"governed": 1, "new": 2},
+  "scout_match_strength": {"strong": 1, "weak": 0},
+  "hypotheses": {"raised": 0, "routed": 0, "proven": 0, "also_swept": 0, "unread": 0, "dropped": 0},
+  "dropped_malformed": 0,
+  "dropped_unreachable": 0,
+  "findings": []
+}

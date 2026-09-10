@@ -1,0 +1,87 @@
+{
+  "base": "18276dc",
+  "head": "43f3f8eb898482176994351df8141a7be4eec3fe",
+  "scope": "neither",
+  "graph": "off",
+  "scout_failed": false,
+  "slices_run": ["Access", "Data", "Answer", "Structure"],
+  "verified_clean": ["Access", "Data"],
+  "failed": [],
+  "degraded": [],
+  "slice_mismatch": [],
+  "scout_graph_coverage": {"hit": 0, "none": 2},
+  "scout_classification": {"governed": 1, "new": 1},
+  "scout_match_strength": {"strong": 1, "weak": 0},
+  "hypotheses": {"raised": 4, "routed": 4, "proven": 4, "also_swept": 1, "unread": 0, "dropped": 0},
+  "dropped_malformed": 0,
+  "dropped_unreachable": 0,
+  "findings": [
+    {
+      "n": 1,
+      "file": ".claude/skills/pr-review/scripts/validate-pack.sh",
+      "line": 44,
+      "label": "validation",
+      "source": "hypothesis",
+      "failure_mode": "A Label probes probe cell that legitimately wraps a shell pipeline example in a backtick code span (a valid GFM table row, since a pipe inside a code span isn't a cell delimiter) is rejected: naive awk -F'|' splitting produces NF=5, not 4, and the row is reported as malformed.",
+      "evidence": [
+        ".claude/skills/pr-review/scripts/validate-pack.sh:37 — awk -F'|' splits on every literal pipe",
+        ".claude/skills/pr-review/scripts/validate-pack.sh:41 — row processed without ignoring pipes inside backtick spans",
+        ".claude/skills/pr-review/scripts/validate-pack.sh:44 — if (NF != 4) fires on a valid row (NF=5), reporting it invalid"
+      ]
+    },
+    {
+      "n": 2,
+      "file": ".claude/skills/pr-review/scripts/validate-pack.sh",
+      "line": 63,
+      "label": "validation",
+      "source": "hypothesis",
+      "failure_mode": "An unclosed ```bash fence under Brief probes is not flagged: the extraction has no heading-boundary reset so it swallows later sections, and if that swallowed prose happens to parse as valid bash (comments/plain words usually do), bash -n reports no error and the malformed pack passes as valid.",
+      "evidence": [
+        ".claude/skills/pr-review/scripts/validate-pack.sh:59 — BRIEF_HAS_FENCE only checks for an opening fence, not closure",
+        ".claude/skills/pr-review/scripts/validate-pack.sh:63 — BRIEF_BLOCK awk has no /^## /{f=0} reset, so it swallows past ## Dependencies when unclosed",
+        ".claude/skills/pr-review/scripts/validate-pack.sh:65-66 — bash -n on swallowed prose typically parses cleanly, so BRIEF_ERR stays empty"
+      ]
+    },
+    {
+      "n": 3,
+      "file": ".claude/skills/pr-review/scripts/validate-pack.sh",
+      "line": 74,
+      "label": "validation",
+      "source": "sweep",
+      "failure_mode": "The same unclosed Brief probes ```bash fence also defeats the D4 citation check: the fence-toggle flips 'in fence' at the unclosed opener and never flips back, so a genuine unwrapped citation later in the document (e.g. in ## Dependencies) is excluded from the scan and never flagged.",
+      "evidence": [
+        ".claude/skills/pr-review/scripts/validate-pack.sh:63 — the unclosed ```bash fence never hits a matching close",
+        ".claude/skills/pr-review/scripts/validate-pack.sh:74 — STRIPPED's f=!f toggle stays 'in fence' through EOF once unmatched",
+        ".claude/skills/pr-review/scripts/validate-pack.sh:76-77 — bare-citation scan runs only on STRIPPED, so a real unwrapped citation later in the doc is never reported"
+      ]
+    },
+    {
+      "n": 4,
+      "file": ".claude/skills/pr-review/scripts/validate-pack.sh",
+      "line": 76,
+      "label": "validation",
+      "source": "hypothesis",
+      "failure_mode": "A plain URL mentioned in prose outside any fence (e.g. https://docs.python.org/3/library/re.html) is wrongly flagged as an unwrapped file citation because the regex's character class excludes ':', so matching resumes right after 'https:' and matches the '//...' remainder as a path-shaped token.",
+      "evidence": [
+        ".claude/skills/pr-review/scripts/validate-pack.sh:74 — STRIPPED keeps non-fenced prose including URL mentions",
+        ".claude/skills/pr-review/scripts/validate-pack.sh:76 — grep -oE regex matches '//docs.python.org/3/library/re.html' since ':' isn't in the class",
+        ".claude/skills/pr-review/scripts/validate-pack.sh:77 — grep -v '^`' | grep '/' does not exclude the fragment",
+        ".claude/skills/pr-review/scripts/validate-pack.sh:83 — fail() reports the URL fragment as a bad citation"
+      ]
+    },
+    {
+      "n": 5,
+      "file": ".claude/skills/pr-review/scripts/validate-pack.sh",
+      "line": 65,
+      "label": "duplication",
+      "source": "hypothesis",
+      "failure_mode": "The Brief probes fenced-```bash block extraction (the awk one-liner that finds the ```bash fence after '## Brief probes' and captures everything up to the closing ```) is hand-copied verbatim into validate-pack.sh instead of being sourced from one shared location. If the pack's Brief-probes fence shape ever needs a fix (e.g. tolerating a different fence marker, or a heading edge case), a change made only in build-artifacts.sh's copy leaves validate-pack.sh silently validating against the old shape, so it can report a pack 'valid' that build-artifacts.sh actually mis-extracts (or reject one it handles fine) with no signal that the two disagree.",
+      "evidence": [
+        ".claude/skills/pr-review/scripts/validate-pack.sh:65 — BRIEF_BLOCK=$(awk '/^## Brief probes/{f=1;next} f&&/^```bash/{b=1;next} f&&b&&/^```/{exit} f&&b' \"$PACK\")",
+        ".claude/skills/pr-review/scripts/build-artifacts.sh:351 — PROBES=\"$(awk '/^## Brief probes/{f=1;next} f&&/^```bash/{b=1;next} f&&b&&/^```/{exit} f&&b' \"$PACK\")\" — the identical awk expression, hand-copied rather than sourced from one place",
+        ".claude/skills/pr-review/scripts/validate-pack.sh:67 — bash -n is run only against validate-pack.sh's own private copy of the extraction, so this validator cannot catch a drift between its copy and build-artifacts.sh's copy — exactly the failure the validator exists to prevent"
+      ],
+      "deviates_from": "duplication.shared-matching-logic-sourced-not-copied"
+    }
+  ]
+}

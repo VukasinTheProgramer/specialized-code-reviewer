@@ -1,0 +1,75 @@
+{
+  "base": "43f3f8e",
+  "head": "a42f5e6056f4c8c38c926ac418a1512b4e7d27e9",
+  "scope": "neither",
+  "graph": "off",
+  "scout_failed": false,
+  "slices_run": ["Access", "Data", "Answer", "Structure"],
+  "verified_clean": ["Access", "Data"],
+  "failed": [],
+  "degraded": [],
+  "slice_mismatch": [],
+  "scout_graph_coverage": {"hit": 0, "none": 4},
+  "scout_classification": {"governed": 2, "new": 2},
+  "scout_match_strength": {"strong": 2, "weak": 0},
+  "hypotheses": {"raised": 3, "routed": 3, "proven": 3, "also_swept": 0, "unread": 0, "dropped": 0},
+  "dropped_malformed": 0,
+  "dropped_unreachable": 0,
+  "findings": [
+    {
+      "n": 1,
+      "file": ".claude/skills/pr-review/scripts/build-artifacts.sh",
+      "line": 376,
+      "label": "control-flow",
+      "source": "hypothesis",
+      "failure_mode": "a Brief-probes block that succeeds but writes an incidental diagnostic to stderr sets BRIEF_DEGRADED=1 and reports brief.txt as possibly incomplete even though nothing actually failed",
+      "evidence": [
+        ".claude/skills/pr-review/scripts/build-artifacts.sh:376 — eval \"$PROBES\" ... 2>\"$OUT/brief-probes-stderr\" captures every byte of stderr from the block, not just failures",
+        "build-artifacts.sh:377 — if [ -s \"$OUT/brief-probes-stderr\" ]; then treats any non-empty stderr as an error",
+        "build-artifacts.sh:378-379 — BRIEF_DEGRADED=1 and a 'may be missing whatever it would have added' note are emitted for a fully successful run that merely logged to stderr"
+      ]
+    },
+    {
+      "n": 2,
+      "file": ".claude/skills/pr-review/scripts/build-artifacts.sh",
+      "line": 388,
+      "label": "contract",
+      "source": "sweep",
+      "failure_mode": "a pack that fails validate-pack.sh for a reason unrelated to Wiring files (e.g. a malformed Label-probes row) gets PACK_INVALID=1/STALE=1, which this diff documents as degrading identically to a stale pack across wiring.txt/probes-*.txt, but wiring.txt's extraction only checks PACK_PRESENT and still writes the invalid pack's Wiring files block verbatim",
+      "evidence": [
+        ".claude/skills/pr-review/SKILL.md:28 — \"PACK_STALE=1 empties wiring.txt/probes-*.txt\" is the documented contract",
+        "build-artifacts.sh:79 — PACK_INVALID=1; STALE=1 — an invalid pack sets the same flag the doc says empties wiring.txt",
+        "build-artifacts.sh:368,400,441 — brief/label-probes/deps all correctly gate on [ \"$STALE\" = 0 ]",
+        "build-artifacts.sh:388 — if [ \"$PACK_PRESENT\" = 1 ]; then, with no STALE check, still populates wiring.txt from the flagged-invalid pack"
+      ]
+    },
+    {
+      "n": 3,
+      "file": "tests/run-integration.sh",
+      "line": 32,
+      "label": "contract",
+      "source": "hypothesis",
+      "failure_mode": "build-artifacts.sh fails/errors before printing OUT=, leaving OUT empty; grep against the resulting nonexistent \"$OUT/wiring.txt\" path exits non-zero (no-match), which the D1 check's else-branch reports as 'ok' instead of failing",
+      "evidence": [
+        "tests/run-integration.sh:30 — OUT captured from build-artifacts.sh's stdout via grep '^OUT=', empty if the build errored out first",
+        "tests/run-integration.sh:32 — grep -qE '\\$\\(|echo' \"$OUT/wiring.txt\" 2>/dev/null becomes grep against \"/wiring.txt\", exits 2 (treated as no-match)",
+        "tests/run-integration.sh:36-37 — else branch prints 'ok D1: wiring.txt clean' even though the upstream build never produced anything to check"
+      ]
+    },
+    {
+      "n": 4,
+      "file": ".claude/skills/pr-review/scripts/build-artifacts.sh",
+      "line": 76,
+      "label": "duplication",
+      "source": "hypothesis",
+      "failure_mode": "A domain pack missing/renaming one of the five required '## Heading' strings (e.g. '## Dependencies') is checked by two independently hand-written loops that disagree: build-artifacts.sh's own pre-existing inline loop (line 52) only warns to stderr and leaves STALE=0, so every other section still populates; the newly-wired call to validate-pack.sh (lines 76-83) re-implements the identical five-heading check and, on the same missing heading, exits 1, which build-artifacts.sh now treats as fatal (PACK_INVALID=1; STALE=1), blanking wiring.txt and every probes-*.txt that the first copy's warn-only path would have left intact.",
+      "evidence": [
+        ".claude/skills/pr-review/scripts/build-artifacts.sh:52 — `for h in \"## Stack scope prefixes\" ... \"## Dependencies\"; do grep -qxF \"$h\" \"$PACK\" || MISSING_HEADINGS=...` — inline heading check, warn-only, never sets STALE",
+        ".claude/skills/pr-review/scripts/validate-pack.sh:18 — `for h in \"## Stack scope prefixes\" ... \"## Dependencies\"; do grep -qxF \"$h\" \"$PACK\" || fail \"missing or renamed heading: $h\"` — a second, independently hand-written copy of the identical five-string check",
+        ".claude/skills/pr-review/scripts/build-artifacts.sh:76-79 — new 0.1c wiring: `bash \"$VALIDATOR\" \"$PACK\"`; `if [ $? = 1 ]; then PACK_INVALID=1; STALE=1` — the second copy's failure now gates the whole pack",
+        ".claude/skills/pr-review/scripts/build-artifacts.sh:368,400 — `if [ \"$PACK_PRESENT\" = 1 ] && [ \"$STALE\" = 0 ]` — STALE=1 from the duplicate check empties every probes file and wiring.txt for a miss the first copy alone would only have warned about"
+      ],
+      "deviates_from": "duplication.shared-matching-logic-sourced-not-copied"
+    }
+  ]
+}

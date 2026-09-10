@@ -1,0 +1,63 @@
+{
+  "base": "87a033d",
+  "head": "18276dc4c24f843674dc0f7db4aca9f970551e84",
+  "scope": "neither",
+  "graph": "off",
+  "scout_failed": false,
+  "slices_run": ["Access", "Data", "Answer", "Structure"],
+  "verified_clean": ["Access", "Data"],
+  "failed": [],
+  "degraded": [],
+  "slice_mismatch": [],
+  "scout_graph_coverage": {"hit": 0, "none": 10},
+  "scout_classification": {"governed": 2, "new": 8},
+  "scout_match_strength": {"strong": 0, "weak": 2},
+  "hypotheses": {"raised": 2, "routed": 2, "proven": 1, "also_swept": 1, "unread": 0, "dropped": 0},
+  "dropped_malformed": 0,
+  "dropped_unreachable": 1,
+  "findings": [
+    {
+      "n": 1,
+      "file": ".claude/skills/pr-review/scripts/validate-pack.sh",
+      "line": 22,
+      "label": "validation",
+      "source": "sweep",
+      "failure_mode": "validate-pack.sh only checks heading presence; a pack with all 5 headings verbatim but a defect the TODO'd checks would catch (unclosed wiring fence, malformed label-probes row, unknown label, unquoted citation, bad brief syntax) is accepted as valid (exit 0), contradicting the exit-1 expectation tests/run.sh asserts for those exact fixtures shipped in the same diff.",
+      "evidence": [
+        ".claude/skills/pr-review/scripts/validate-pack.sh:18-20 — only heading presence is checked",
+        ".claude/skills/pr-review/scripts/validate-pack.sh:22-24 — TODO admits the other 5 checks are unimplemented",
+        "tests/packs/bad-wiring-unfenced.md — all 5 headings present verbatim despite its real defect",
+        "tests/run.sh:24 — check \"bad-wiring-unfenced.md\" 1 expects exit 1",
+        "bash tests/run.sh reports FAIL for 5 of 6 bad-*.md fixtures because the validator returns exit 0"
+      ]
+    },
+    {
+      "n": 2,
+      "file": "tests/run.sh",
+      "line": 5,
+      "label": "validation",
+      "source": "hypothesis",
+      "failure_mode": "git rev-parse --show-toplevel failing (non-git checkout) leaves ROOT as an empty string unchecked (set -u doesn't flag an assigned-empty var), so VALIDATOR/PACKS resolve to filesystem-root paths and every check call fails with an opaque 'No such file or directory' instead of a clear, documented exit.",
+      "evidence": [
+        "tests/run.sh:5 — ROOT=\"$(git rev-parse --show-toplevel)\" with no || guard",
+        ".claude/skills/pr-review/scripts/build-artifacts.sh:22 — sibling script guards the identical call with || { echo \"error: not inside a git repository\" >&2; exit 2; }",
+        "tests/run.sh:6-7 — VALIDATOR/PACKS built from the unguarded ROOT",
+        "tests/run.sh:22-28 — every check call then fails against a root-of-filesystem path with no diagnostic"
+      ],
+      "deviates_from": "validation.git-root-guard"
+    },
+    {
+      "n": 3,
+      "file": ".claude/skills/pr-review/scripts/validate-pack.sh",
+      "line": 24,
+      "label": "duplication",
+      "source": "sweep",
+      "failure_mode": "A pack missing one of the 5 required section headings is checked with a hand-copied grep -qxF loop over a hardcoded 5-heading list, duplicating the identical loop already present in build-artifacts.sh (a pre-existing sibling script), with its own separately-worded failure message — the two copies can drift on what they check and how they report it on the next edit to either file.",
+      "evidence": [
+        ".claude/skills/pr-review/scripts/build-artifacts.sh:52 — for h in \"## Stack scope prefixes\" ... ; do grep -qxF \"$h\" \"$PACK\" || MISSING_HEADINGS=... — the original 5-heading exact-match loop, already present before this diff",
+        ".claude/skills/pr-review/scripts/validate-pack.sh:24 — for h in \"## Stack scope prefixes\" ... ; do grep -qxF \"$h\" \"$PACK\" || fail \"missing or renamed heading: $h\" — the identical loop and list hand-copied into a new file",
+        ".claude/skills/pr-review/scripts/validate-pack.sh:21 — fail() { echo \"invalid: $1\"; INVALID=1; } — the second copy's own independent reporting path, free to diverge from build-artifacts.sh's wording and behavior"
+      ]
+    }
+  ]
+}
