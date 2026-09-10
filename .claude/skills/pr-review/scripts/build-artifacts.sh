@@ -466,7 +466,7 @@ BRIEF_DEGRADED=0
   echo "files:                  $FILES"
   if [ "$PACK_PRESENT" = 1 ] && [ "$STALE" = 0 ]; then
     # the pack's own probes, verbatim, run in a subshell with added(), removed() and $OUT in scope
-    PROBES="$(awk '/^## Brief probes/{f=1;next} f&&/^```bash/{b=1;next} f&&b&&/^```/{exit} f&&b' "$PACK")"
+    PROBES="$(extract_brief_probes_block "$PACK")"
     # D3 fix: stderr used to go straight to /dev/null — a broken probe block
     # (bad quoting, an undefined command) failed silently mid-brief with no
     # trace anywhere. Captured to $OUT/brief-probes-stderr instead; non-empty

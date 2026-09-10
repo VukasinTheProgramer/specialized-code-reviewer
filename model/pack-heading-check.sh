@@ -23,3 +23,16 @@ missing_pack_headings() {
     grep -qxF "$h" "$pack_file" || printf '%s\n' "$h"
   done < "$headings_file"
 }
+
+# Sourced by build-artifacts.sh and model/validate-pack.sh for the same
+# reason as missing_pack_headings() above: this exact awk one-liner used
+# to be hand-copied into both, so a change to the extraction rule in one
+# (a second fenced block, a different fence language) could silently
+# leave the other checking — or evaluating — something different.
+#
+#   usage: extract_brief_probes_block <pack-file>
+#   prints the fenced ```bash block under '## Brief probes', or nothing
+#   if the heading, the fence, or the block itself is absent.
+extract_brief_probes_block() {
+  awk '/^## Brief probes/{f=1;next} f&&/^```bash/{b=1;next} f&&b&&/^```/{exit} f&&b' "$1"
+}

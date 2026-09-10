@@ -109,7 +109,7 @@ BRIEF_HAS_FENCE=$(awk '/^## Brief probes/{f=1;next} /^## /{f=0} f&&/^```bash/{pr
 if [ "$BRIEF_HAS_FENCE" != "yes" ]; then
   fail "Brief probes: no \`\`\`bash fence found (model/FORMAT.md §5)"
 else
-  BRIEF_BLOCK=$(awk '/^## Brief probes/{f=1;next} f&&/^```bash/{b=1;next} f&&b&&/^```/{exit} f&&b' "$PACK")
+  BRIEF_BLOCK=$(extract_brief_probes_block "$PACK")
   if [ -n "$BRIEF_BLOCK" ]; then
     BRIEF_ERR=$(printf '%s\n' "$BRIEF_BLOCK" | bash -n 2>&1 >/dev/null)
     [ -n "$BRIEF_ERR" ] && fail "Brief probes: bash syntax error (model/FORMAT.md §5) — $(printf '%s' "$BRIEF_ERR" | head -1)"
@@ -119,8 +119,11 @@ fi
 # ---- check: every path.ext[:line] citation containing a '/' is backtick-
 # wrapped — D4. Scanned outside fenced code blocks only: the Wiring files
 # and Brief probes blocks legitimately hold bare paths/shell code, not
-# citations. ----
-STRIPPED=$(awk '/^```/{f=!f;next} !f' "$PACK")
+# citations. A bare URL (`https://example.com/foo`) is stripped first —
+# its own scheme:// prefix already marks it as not a repo-relative
+# citation, and without this the bare-citation regex matches the
+# "//example.com" fragment and rejects an otherwise-valid pack. ----
+STRIPPED=$(awk '/^```/{f=!f;next} !f' "$PACK" | sed -E 's#[A-Za-z][A-Za-z0-9+.-]*://[^[:space:]]*##g')
 BARE_CITES=$(printf '%s\n' "$STRIPPED" \
   | grep -oE '`[^`]*`|[A-Za-z0-9_./-]+\.[a-zA-Z]+(:[0-9]+(-[0-9]+)?)?' \
   | grep -v '^`' | grep '/')
