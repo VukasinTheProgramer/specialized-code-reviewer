@@ -99,7 +99,21 @@ Two or three sentences. What the code does, what it should do, and the concrete 
 
 Name the place in this codebase that already does it correctly, with a path and a line, and show that code.
 
-**Domain pack first.** If `model/pr-review-domain.md` exists, read its `## Label probes` row for this finding's label — that table carries this repo's own cited files, lines and functions (the repository that filters through `PaymentAccount.user_id`, the `_set_auth_cookies` helper, `.quantize(Decimal("0.01"), ROUND_HALF_UP)`, the `invalidateQueries` in `useCards.js`). Read it and quote it.
+**`deviates_from` present (week 7): no guessing needed.** The finding already names which record it deviates from — this is a matching question week 6/7's own pipeline already answered, not one for this step to re-derive from a label. Find that `### <id>` record in `model/pr-review-domain.md` directly (by id, not by label), read its `exemplar` citation, and `Read` the actual file at that line to quote the real code — same "read the files, don't paraphrase" rule as the trace above. Say plainly which guard the finding's own code drops, in the record's own words (its `guard` field), not a fresh paraphrase.
+
+```
+Convention: ownership.repository-user-scope
+  Backend/app/crud/payment_repository.py:88
+
+    stmt = select(PaymentAccount).where(PaymentAccount.user_id == user_id)
+
+  Drops the join to PaymentAccount.user_id this record's guard requires —
+  the exact comparison card_repository.py:61 skips.
+```
+
+Record not found in the pack (renamed or removed since the run) — say so plainly and fall through to the domain-pack/label path below; this is a stale-reference case, not a reason to invent a citation.
+
+**No `deviates_from` — domain pack next.** If `model/pr-review-domain.md` exists, read its `## Label probes` row for this finding's label — that table carries this repo's own cited files, lines and functions (the repository that filters through `PaymentAccount.user_id`, the `_set_auth_cookies` helper, `.quantize(Decimal("0.01"), ROUND_HALF_UP)`, the `invalidateQueries` in `useCards.js`). Read it and quote it.
 
 **No domain pack, or the row is empty.** Fall back to `.claude/agents/pr-review-scout.md`'s label table — it carries only generic, uncited guidance per label, not a citation to quote. Read it for what the label is looking for, then find the sibling in this codebase yourself and cite it directly.
 

@@ -11,9 +11,15 @@ The exact render. Every value comes from the object the Workflow returned (persi
 
 2. [logic] Frontend/src/pages/user/components/TransactionsTable.jsx:88
    Amount arrives from the API as a string and toFixed reintroduces float error.
+
+3. [ownership · deviates ownership.repository-user-scope] Backend/app/crud/other_repository.py:44
+   Any authenticated user reaches another org's record by sending its public_id.
+   Guard dropped: the join to PaymentAccount.user_id in the WHERE clause — cf. Backend/app/crud/payment_repository.py:88
 ```
 
 Summary line is the **first sentence of `failure_mode`, verbatim** — never rewritten. Evidence trace is deferred (not dropped) to `/explain-bug <n>`; a finding without an `evidence` array is stored without one, never reconstructed.
+
+**A finding carrying `deviates_from` (week 7)** gets two additions, both sourced, neither composed: the label chip gains `· deviates <id>` (the field, verbatim), and one line follows the summary — `Guard dropped: <the record's own \`guard\` field, verbatim> — cf. <the record's own \`exemplar\` citation>`. Look the record up by `id` in `model/pr-review-domain.md` (or the run's own `records.json` if still on disk) to get `guard`/`exemplar` — both come from the record as authored, never paraphrased or invented here, the same "nothing here is composed at render time" rule as every other line. Record not found (renamed or removed since the run) — say so on that line instead of guessing: `Guard dropped: record <id> not found in the current pack.`
 
 **The numbered findings are the whole body of the report.** There is no dismissal section: a verifier either proved a defect or dropped it silently, so nothing arrives here describing something that was ruled out. Never add such a section, and never describe a finding as ruled out.
 
@@ -28,6 +34,14 @@ Scout classification: 7 governed (6 strong, 1 weak), 4 new.
 ```
 
 `scout_classification`/`scout_match_strength` (week 6): every changed unit's own answer to *which record governs this code* — never *does it follow that record*, which is a verifier's job (week 7). `governed` (a record applies, `strong` when the matcher and the scout agreed, `weak` when the scout named a record the matcher missed), `new` (no record applies, or the two signals disagreed). A `governed`/`strong` unit's record is routed to its verifier (week 7) — a `weak` one is not; see a finding's own `deviates_from` for whether that comparison actually produced anything.
+
+When the run had a domain pack (`records.json` non-empty), one more closing line, same "printed only when non-zero" discipline as every counter here — a count, never a per-unit list:
+
+```
+Conventions: 10 loaded, 4 matched strong, 1 deviation proven. 5 units unprecedented.
+```
+
+`loaded` is `records.json`'s own array length (the pack this run actually had, stack-gated — not the pack's total record count if `be`/`fe` excluded some). `matched strong` is `scout_match_strength.strong`. `deviations proven` is how many entries in `findings` itself carry `deviates_from` — count it from the rendered findings, not from a separate tally, so it can never drift from what the report actually shows. `units unprecedented` is `scout_classification.new`. Zero conventions loaded (no pack, or a stale one): skip this line entirely, same as every other zero-count closing line in this file. `scout_failed: true`: skip it too — an empty `context` makes every sub-count a real zero for the wrong reason (the scout crashed, not "nothing governed"), same caution as the `Scout classification:` line above.
 
 `routed` (hypotheses that actually reached a verifier, after the router dropped any outside every slice or outside this repo's stack) is the denominator for precision — read it as `proven ÷ routed`, never `proven ÷ raised`, since `raised` still counts hypotheses no verifier ever saw.
 

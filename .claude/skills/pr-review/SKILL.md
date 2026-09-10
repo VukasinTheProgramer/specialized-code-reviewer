@@ -104,7 +104,7 @@ Inside, the script runs one `pr-review-scout` (Grep/Glob plus live graphify MCP 
 
 Two things the return value can carry that must reach the report:
 
-- `scout_failed: true` → the scout crashed and every verifier ran unassisted. Say so ("scout stage failed — findings below are sweep-only") instead of rendering the normal `Scout context:`/`Scout classification:` lines — an empty `context` array means `scout_classification` is `{governed:0, new:0}` too, which reads as "nothing to classify," not as a real zero.
+- `scout_failed: true` → the scout crashed and every verifier ran unassisted. Say so ("scout stage failed — findings below are sweep-only") instead of rendering the normal `Scout context:`/`Scout classification:`/`Conventions:` lines — an empty `context` array means `scout_classification` is `{governed:0, new:0}` too, which reads as "nothing to classify," not as a real zero.
 - `failed`, `degraded`, `slice_mismatch` → slices or labels that were **not reliably reviewed**. Named separately, never folded into "clean" (§5.6).
 
 ## Step 4 — Orientation brief
@@ -148,7 +148,7 @@ mkdir -p .git/pr-review && mv "$OUT/findings.json" .git/pr-review/findings.json
 
 ### 5.5 Render
 
-Follow `references/report-format.md` exactly. In short: a numbered index, one line per finding — `[label] file:line` and the **first sentence of `failure_mode`, verbatim**; then the closing lines naming what ran, the hypothesis numbers, and every `failed` / `degraded` / `slice_mismatch` / `dropped_unreachable` / `dropped_invalid_line` / `hypotheses.dropped` value that is non-zero. Evidence traces are deferred to `/explain-bug <n>`, not dropped.
+Follow `references/report-format.md` exactly. In short: a numbered index, one line per finding — `[label] file:line` (`· deviates <id>` on the chip, plus a `Guard dropped:` line, when the finding carries `deviates_from` — week 7) and the **first sentence of `failure_mode`, verbatim**; then the closing lines naming what ran, the hypothesis numbers, a `Conventions:` line when the run had a pack, and every `failed` / `degraded` / `slice_mismatch` / `dropped_unreachable` / `dropped_invalid_line` / `hypotheses.dropped` value that is non-zero. Evidence traces are deferred to `/explain-bug <n>`, not dropped.
 
 ### 5.6 A clean report names what was checked
 
