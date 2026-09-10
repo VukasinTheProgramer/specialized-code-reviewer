@@ -285,13 +285,6 @@ function governedBlock(file, record) {
   return `${file}\n  governed by ${record.id}\n  correct      ${record.exemplar}\n  guard        ${record.guard}\n  unsafe when  ${record.unsafe_when}`
 }
 
-const GOVERNED_BAR = `A governed unit becomes a finding only when you can state all three: the
-record's guard is absent here; its unsafe when condition is satisfied by
-this code, specifically; and the usual triggering input and wrong outcome,
-with an evidence trace. Two out of three is a silent drop, same as always
-— this does not lower the five-field bar, the record only makes it easier
-to meet. Absence of the guard is not the finding.`
-
 const governedBySlice = { Access: [], Data: [], Answer: [], Structure: [] }
 let droppedGoverned = 0
 for (const c of scout.context || []) {
@@ -309,7 +302,7 @@ if (droppedGoverned > 0) log(`${droppedGoverned} governed unit(s) dropped before
 const governedText = {}
 for (const s of SLICES) {
   governedText[s.name] = governedBySlice[s.name].length
-    ? `\ngoverned units in this diff — a domain-pack record already matched to these\nfiles by the scout and a deterministic matcher (strong match only). This is\nadditional ground, not a replacement for your labels' probes above.\n\n${GOVERNED_BAR}\n\n${governedBySlice[s.name].join('\n\n')}\n`
+    ? `\ngoverned units in this diff — a domain-pack record already matched to these\nfiles by the scout and a deterministic matcher (strong match only). This is\nadditional ground, not a replacement for your labels' probes above; see your\nown agent definition's "Governed units" section for the bar a finding here\nstill has to clear.\n\n${governedBySlice[s.name].join('\n\n')}\n`
     : ''
 }
 
